@@ -19,6 +19,7 @@ import type { Deps } from '../app-deps';
 import { incidents } from '../db/schema';
 import { IncidentService, type Actor } from '../incidents/service';
 import { requirePermission } from '../middleware/auth';
+import { incidentSiteCondition, siteScope } from '../middleware/scope';
 import type { AppEnv, Principal } from '../middleware/context';
 
 const err = (d: string) => ({
@@ -46,6 +47,7 @@ const actorOf = (p: Principal, requestId: string | null, ip: string | null): Act
   userId: p.userId,
   email: p.email,
   permissions: p.permissions,
+  sites: siteScope(p),
   requestId,
   ip,
 });
@@ -71,7 +73,7 @@ export function incidentRoutes(deps: Deps) {
         ...common,
       },
     }),
-    async (c) => c.json(IncidentStats.parse(await svc.stats()), 200),
+    async (c) => c.json(IncidentStats.parse(await svc.stats(siteScope(c.get('principal')))), 200),
   );
 
   app.openapi(
@@ -101,6 +103,8 @@ export function incidentRoutes(deps: Deps) {
     async (c) => {
       const q = c.req.valid('query');
       const conds: SQL[] = [];
+      const scope = incidentSiteCondition(siteScope(c.get('principal')));
+      if (scope) conds.push(scope);
       if (q.status) conds.push(eq(incidents.status, q.status));
       if (q.open) conds.push(ne(incidents.status, 'closed'));
       if (q.severity) conds.push(eq(incidents.severity, q.severity));
@@ -164,7 +168,13 @@ export function incidentRoutes(deps: Deps) {
         ...common,
       },
     }),
-    async (c) => c.json(IncidentDetail.parse(await svc.detail(c.req.valid('param').id)), 200),
+    async (c) =>
+      c.json(
+        IncidentDetail.parse(
+          await svc.detail(c.req.valid('param').id, siteScope(c.get('principal'))),
+        ),
+        200,
+      ),
   );
 
   app.openapi(

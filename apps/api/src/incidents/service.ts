@@ -17,14 +17,22 @@ import {
 } from '@noc/shared';
 import type { AuditService } from '../audit/service';
 import type { Db, DbTx } from '../db/client';
-import { alerts, incidentEvents, incidents, securityEvents } from '../db/schema';
-import type { AlertBus } from '../events/bus';
+import { alerts, incidentEvents, incidents, securityEvents, sites } from '../db/schema';
+import type { AlertBusLike } from '../events/bus';
+import {
+  alertSiteCondition,
+  assetSiteOf,
+  incidentSiteCondition,
+  siteAllowed,
+} from '../middleware/scope';
 import { toAlert } from '../routes/alerts';
 
 export interface Actor {
   userId: string;
   email: string;
   permissions: ReadonlySet<Permission>;
+  /** Site grants; null = unrestricted. Enforced inside every query of this service. */
+  sites: readonly string[] | null;
   requestId: string | null;
   ip: string | null;
 }
@@ -47,6 +55,7 @@ export const toIncident = (i: IncidentRow, alertCount: number): IncidentSummary 
   assigneeId: i.assigneeId,
   commanderId: i.commanderId,
   summary: i.summary,
+  site: i.site,
   openedAt: i.openedAt.toISOString(),
   closedAt: i.closedAt?.toISOString() ?? null,
   closureReason: i.closureReason,
@@ -74,13 +83,13 @@ export class IncidentService {
   constructor(
     private readonly db: Db,
     private readonly audit: AuditService,
-    private readonly bus: AlertBus,
+    private readonly bus: AlertBusLike,
   ) {}
 
   private auditOf(
     actor: Actor,
     action: string,
-    targetId: string,
+    targetId: string | null,
     metadata: Record<string, unknown>,
   ) {
     return {
@@ -96,11 +105,12 @@ export class IncidentService {
     };
   }
 
-  private async lock(tx: DbTx, id: string): Promise<IncidentRow> {
+  /** Row lock; an incident outside the actor's sites is reported as absent (404), never 403. */
+  private async lock(tx: DbTx, id: string, actor: Actor): Promise<IncidentRow> {
     const [row] = await tx
       .select()
       .from(incidents)
-      .where(eq(incidents.id, id))
+      .where(and(eq(incidents.id, id), incidentSiteCondition(actor.sites)))
       .limit(1)
       .for('update');
     if (!row) throw new HTTPException(404, { message: 'Incident not found' });
@@ -120,7 +130,12 @@ export class IncidentService {
     at: () => Date,
   ): Promise<Array<{ id: string; severity: string; title: string }>> {
     if (alertIds.length === 0) return [];
-    const rows = await tx.select().from(alerts).where(inArray(alerts.id, alertIds)).for('update');
+    // Alerts outside the actor's sites do not exist from their point of view.
+    const rows = await tx
+      .select()
+      .from(alerts)
+      .where(and(inArray(alerts.id, alertIds), alertSiteCondition(actor.sites)))
+      .for('update');
     const found = new Set(rows.map((r) => r.id));
     const missing = alertIds.find((id) => !found.has(id));
     if (missing) throw new HTTPException(404, { message: `Alert ${missing} not found` });
@@ -166,7 +181,54 @@ export class IncidentService {
       });
   }
 
+  /**
+   * Site of a new incident: the explicit one, else the first attributable attached alert's. A
+   * restricted actor may only open incidents inside their grants (403, audited); without any
+   * site to attribute, their request is refused (400) rather than creating a global incident
+   * they would never see again.
+   */
+  private async resolveSite(input: CreateIncidentRequest, actor: Actor): Promise<string | null> {
+    let site = input.site;
+    if (site !== null) {
+      const [known] = await this.db
+        .select({ key: sites.key })
+        .from(sites)
+        .where(eq(sites.key, site))
+        .limit(1);
+      if (!known) throw new HTTPException(400, { message: `Unknown site ${site}` });
+    }
+    if (input.alertIds.length > 0) {
+      // Only alerts the actor can see take part; an invisible alert is reported as absent so
+      // the refusal never reveals which site it belongs to.
+      const rows = await this.db
+        .select({ id: alerts.id, assetId: alerts.assetId })
+        .from(alerts)
+        .where(and(inArray(alerts.id, input.alertIds), alertSiteCondition(actor.sites)))
+        .limit(50);
+      const seen = new Set(rows.map((r) => r.id));
+      const missing = input.alertIds.find((id) => !seen.has(id));
+      if (missing) throw new HTTPException(404, { message: `Alert ${missing} not found` });
+      for (const r of rows) {
+        if (site !== null) break;
+        if (r.assetId) site = await assetSiteOf(this.db, r.assetId);
+      }
+    }
+    if (!siteAllowed(actor.sites, site)) {
+      if (site === null)
+        throw new HTTPException(400, {
+          message: 'A site is required: your account is restricted to specific sites',
+        });
+      await this.audit.record({
+        ...this.auditOf(actor, 'incidents.create', null, { site, reason: 'site_not_granted' }),
+        outcome: 'denied',
+      });
+      throw new HTTPException(403, { message: `Site ${site} is outside your granted sites` });
+    }
+    return site;
+  }
+
   async create(input: CreateIncidentRequest, actor: Actor): Promise<IncidentSummary> {
+    const site = await this.resolveSite(input, actor);
     const { row, escalated } = await this.db.transaction(async (tx) => {
       const at = stamper();
       const [row] = await tx
@@ -176,6 +238,7 @@ export class IncidentService {
           type: input.type,
           severity: input.severity,
           summary: input.summary,
+          site,
           openedBy: actor.userId,
           assigneeId: actor.userId,
         })
@@ -193,6 +256,7 @@ export class IncidentService {
         this.auditOf(actor, 'incidents.create', row!.id, {
           type: input.type,
           severity: input.severity,
+          site,
           alerts: input.alertIds.length,
         }),
         tx,
@@ -211,7 +275,11 @@ export class IncidentService {
   ) {
     // Permission denial is audited before the transaction: an audit row written inside a
     // transaction that then throws would be rolled back with it.
-    const [peek] = await this.db.select().from(incidents).where(eq(incidents.id, id)).limit(1);
+    const [peek] = await this.db
+      .select()
+      .from(incidents)
+      .where(and(eq(incidents.id, id), incidentSiteCondition(actor.sites)))
+      .limit(1);
     if (!peek) throw new HTTPException(404, { message: 'Incident not found' });
     const pre = validateIncidentTransition({ type: peek.type, from: peek.status, to, reason });
     if (pre.ok && pre.requiresPermission && !actor.permissions.has(pre.requiresPermission)) {
@@ -222,7 +290,7 @@ export class IncidentService {
       throw new HTTPException(403, { message: `Transition requires ${pre.requiresPermission}` });
     }
     const row = await this.db.transaction(async (tx) => {
-      const cur = await this.lock(tx, id);
+      const cur = await this.lock(tx, id, actor);
       const t = validateIncidentTransition({ type: cur.type, from: cur.status, to, reason });
       if (!t.ok) throw new HTTPException(409, { message: t.message });
       // Re-checked under the row lock in case the state moved between the peek and the lock.
@@ -269,7 +337,7 @@ export class IncidentService {
 
   async addNote(id: string, note: string, actor: Actor): Promise<IncidentTimelineEntry> {
     return this.db.transaction(async (tx) => {
-      await this.lock(tx, id);
+      await this.lock(tx, id, actor);
       const [e] = await tx
         .insert(incidentEvents)
         .values({ incidentId: id, actorId: actor.userId, kind: 'note', note })
@@ -285,7 +353,7 @@ export class IncidentService {
 
   async update(id: string, patch: IncidentUpdateRequest, actor: Actor): Promise<IncidentSummary> {
     const row = await this.db.transaction(async (tx) => {
-      const cur = await this.lock(tx, id);
+      const cur = await this.lock(tx, id, actor);
       if (cur.status === 'closed')
         throw new HTTPException(409, { message: 'Closed incidents are read-only; reopen first' });
       const set: Partial<typeof incidents.$inferInsert> = { updatedAt: new Date() };
@@ -341,7 +409,7 @@ export class IncidentService {
 
   async linkAlerts(id: string, alertIds: string[], actor: Actor): Promise<IncidentSummary> {
     const { row, escalated } = await this.db.transaction(async (tx) => {
-      const cur = await this.lock(tx, id);
+      const cur = await this.lock(tx, id, actor);
       if (cur.status === 'closed')
         throw new HTTPException(409, { message: 'Cannot attach alerts to a closed incident' });
       const escalated = await this.attachAlerts(tx, cur, alertIds, actor, stamper());
@@ -358,7 +426,7 @@ export class IncidentService {
 
   async unlinkAlert(id: string, alertId: string, actor: Actor): Promise<void> {
     await this.db.transaction(async (tx) => {
-      const cur = await this.lock(tx, id);
+      const cur = await this.lock(tx, id, actor);
       if (cur.status === 'closed')
         throw new HTTPException(409, { message: 'Cannot detach alerts from a closed incident' });
       const [a] = await tx
@@ -386,8 +454,12 @@ export class IncidentService {
     return r?.n ?? 0;
   }
 
-  async detail(id: string): Promise<IncidentDetail> {
-    const [row] = await this.db.select().from(incidents).where(eq(incidents.id, id)).limit(1);
+  async detail(id: string, sites: readonly string[] | null): Promise<IncidentDetail> {
+    const [row] = await this.db
+      .select()
+      .from(incidents)
+      .where(and(eq(incidents.id, id), incidentSiteCondition(sites)))
+      .limit(1);
     if (!row) throw new HTTPException(404, { message: 'Incident not found' });
     const linked = await this.db
       .select()
@@ -425,14 +497,17 @@ export class IncidentService {
     }));
   }
 
-  async stats(now = new Date()): Promise<IncidentStats> {
+  async stats(sites: readonly string[] | null, now = new Date()): Promise<IncidentStats> {
+    const scope = incidentSiteCondition(sites);
     const byStatus = await this.db
       .select({ k: incidents.status, n: count() })
       .from(incidents)
+      .where(scope)
       .groupBy(incidents.status);
     const bySev = await this.db
       .select({ k: incidents.severity, n: count() })
       .from(incidents)
+      .where(scope)
       .groupBy(incidents.severity);
     const since = new Date(now.getTime() - 30 * 86_400_000);
     const [closed] = await this.db
@@ -445,6 +520,7 @@ export class IncidentService {
       .from(incidents)
       .where(
         and(
+          scope,
           isNotNull(incidents.closedAt),
           sql`${incidents.closedAt} >= ${since.toISOString()}::timestamptz`,
         ),

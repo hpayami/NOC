@@ -25,13 +25,13 @@ import {
 import type { AssetService } from '../assets/service';
 import type { AuditService } from '../audit/service';
 import type { Db, DbTx } from '../db/client';
+import { findingSiteCondition } from '../middleware/scope';
 import {
   approvals,
   assessmentEngagements,
   assessmentRunTargets,
   assessmentRuns,
   assessmentScopes,
-  assetInterfaces,
   networkSegments,
   vulnerabilityFindings,
 } from '../db/schema';
@@ -41,6 +41,8 @@ export interface Actor {
   userId: string;
   email: string;
   permissions: ReadonlySet<Permission>;
+  /** Site grants; null = unrestricted. Findings are scoped through their asset. */
+  sites: readonly string[] | null;
   requestId: string | null;
   ip: string | null;
 }
@@ -807,25 +809,24 @@ export class AssessmentService {
           // An IP is never an identity, so an IP-only observation would mint a new asset on every
           // run. Reuse the asset that already owns the address when exactly one does; otherwise
           // record the observation and let identity resolution decide.
-          let assetId = await this.assetByIp(t.target);
-          if (!assetId) {
-            const res = await this.assets.ingest(
-              {
-                source: `assessment:${run.engagementId}`,
-                method: 'tcp_service_check',
-                observedAt: now.toISOString(),
-                identifiers: { macAddresses: [], ipAddresses: [t.target], hostnames: [] },
-                attributes: { openPorts: open.join(','), assessmentRunId: run.id },
-              },
-              {
-                userId: actor.userId,
-                label: actor.email,
-                requestId: actor.requestId,
-                ip: actor.ip,
-              },
-            );
-            assetId = res.assetId;
-          }
+          // Address-only observation: identity resolution re-attaches it to the single asset
+          // holding the address (or reports ambiguity, in which case no finding is recorded).
+          const res = await this.assets.ingest(
+            {
+              source: `assessment:${run.engagementId}`,
+              method: 'tcp_service_check',
+              observedAt: now.toISOString(),
+              identifiers: { macAddresses: [], ipAddresses: [t.target], hostnames: [] },
+              attributes: { openPorts: open.join(','), assessmentRunId: run.id },
+            },
+            {
+              userId: actor.userId,
+              label: actor.email,
+              requestId: actor.requestId,
+              ip: actor.ip,
+            },
+          );
+          const assetId = res.assetId;
           if (run.technique === 'service_fingerprint' && assetId)
             await this.recordFindings(run, assetId, t.target, open, now, summary);
         } else summary.unreachable++;
@@ -849,16 +850,6 @@ export class AssessmentService {
   }
 
   /** The single asset owning this address, or null when none or several do. */
-  private async assetByIp(ip: string): Promise<string | null> {
-    const rows = await this.db
-      .select({ assetId: assetInterfaces.assetId })
-      .from(assetInterfaces)
-      .where(sql`${assetInterfaces.ipAddresses} @> ARRAY[${ip}::inet]`)
-      .limit(2);
-    const ids = [...new Set(rows.map((r) => r.assetId))];
-    return ids.length === 1 ? ids[0]! : null;
-  }
-
   /** Observed exposures become findings; a repeat observation updates lastDetectedAt and evidence, never the triage status. */
   private async recordFindings(
     run: RunRow,
@@ -974,7 +965,7 @@ export class AssessmentService {
       const [cur] = await tx
         .select()
         .from(vulnerabilityFindings)
-        .where(eq(vulnerabilityFindings.id, id))
+        .where(and(eq(vulnerabilityFindings.id, id), findingSiteCondition(actor.sites)))
         .limit(1)
         .for('update');
       if (!cur) throw new HTTPException(404, { message: 'Finding not found' });

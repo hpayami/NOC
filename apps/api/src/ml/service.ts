@@ -9,11 +9,14 @@ import {
 } from '@noc/shared';
 import type { AuditService } from '../audit/service';
 import type { Db } from '../db/client';
+import { assetIdSiteCondition, assetSiteCondition } from '../middleware/scope';
 import { assets, mlInferenceResults, securityEvents } from '../db/schema';
 
 export interface Actor {
   userId: string;
   email: string;
+  /** Site grants; null = unrestricted. Scoring is limited to assets inside the grants. */
+  sites: readonly string[] | null;
   requestId: string | null;
   ip: string | null;
 }
@@ -210,7 +213,7 @@ export class MlService {
     const [asset] = await this.db
       .select({ id: assets.id })
       .from(assets)
-      .where(eq(assets.id, assetId))
+      .where(and(eq(assets.id, assetId), assetSiteCondition(actor.sites)))
       .limit(1);
     if (!asset) throw new HTTPException(404, { message: 'Asset not found' });
     const f = await this.features(assetId, now);
@@ -315,6 +318,10 @@ export class MlService {
         and(
           gte(securityEvents.eventTime, since),
           sql`coalesce(${securityEvents.srcAssetId}, ${securityEvents.dstAssetId}) is not null`,
+          assetIdSiteCondition(
+            actor.sites,
+            sql`coalesce(${securityEvents.srcAssetId}, ${securityEvents.dstAssetId})`,
+          ),
         ),
       )
       .groupBy(sql`1`)

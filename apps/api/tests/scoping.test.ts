@@ -18,7 +18,8 @@ let admin: { token: string };
 let noc: string; // noc_operator: assets.manage, network.manage, sensors.read
 let analystId: string;
 let analyst: string; // soc_analyst
-let blue: string; // events.ingest for alert seeding
+let blueId: string;
+let blue: string; // blue_team_engineer: events.ingest for alert seeding, ml.read/manage
 const PW = 'scoping-password-that-is-long-enough';
 
 const post = (path: string, token: string, body: unknown) =>
@@ -65,11 +66,12 @@ beforeEach(async () => {
     roles: ['soc_analyst'],
   });
   analystId = a.body.id;
-  await createUser(h, admin.token, {
+  const b = await createUser(h, admin.token, {
     email: 'blue@test.local',
     password: PW,
     roles: ['blue_team_engineer'],
   });
+  blueId = b.body.id;
   noc = (await login(h, 'noc@test.local', PW)).body.accessToken;
   analyst = (await login(h, 'analyst@test.local', PW)).body.accessToken;
   blue = (await login(h, 'blue@test.local', PW)).body.accessToken;
@@ -221,5 +223,163 @@ describe('site scoping', () => {
       audit.items.filter((e: { action: string }) => e.action === 'users.set_sites'),
     ).toHaveLength(3);
     expect(audit.items.some((e: { action: string }) => e.action === 'sites.create')).toBe(true);
+  });
+
+  it('scopes incidents, response actions, findings and ML results, and refuses out-of-scope writes', async () => {
+    for (const k of ['dc1', 'branch'])
+      expect((await post('/api/v1/sites', noc, { key: k, name: k })).status).toBe(201);
+    await segment('dc1-servers', 'dc1', '10.1.0.0/24');
+    await segment('branch-users', 'branch', '10.2.0.0/24');
+    const dcAsset = (await jsonOf(await observe('10.1.0.10', 'aa:aa:aa:aa:aa:01', 'srv-01')))
+      .assetId as string;
+    const brAsset = (await jsonOf(await observe('10.2.0.10', 'aa:aa:aa:aa:aa:02', 'pc-01')))
+      .assetId as string;
+    const sensor = await jsonOf(
+      await post('/api/v1/sensors', admin.token, {
+        name: 'ids-dc1',
+        kind: 'suricata',
+        site: 'dc1',
+        monitoredSegmentIds: [],
+        engineVersion: null,
+      }),
+    );
+    const eve = (sid: number, dst: string) =>
+      JSON.stringify({
+        timestamp: '2026-10-18T10:00:00.000000+0000',
+        flow_id: sid,
+        event_type: 'alert',
+        src_ip: '203.0.113.9',
+        src_port: 4444,
+        dest_ip: dst,
+        dest_port: 445,
+        proto: 'TCP',
+        alert: {
+          action: 'allowed',
+          gid: 1,
+          signature_id: sid,
+          rev: 1,
+          signature: `ET TEST ${sid}`,
+          category: 'Attempted Administrator Privilege Gain',
+          severity: 1,
+        },
+      });
+    expect(
+      (
+        await h.app.request(`/api/v1/ingest/suricata/eve?sensorId=${sensor.id}`, {
+          method: 'POST',
+          headers: { ...authed(blue), 'content-type': 'application/x-ndjson' },
+          body: [eve(1, '10.1.0.10'), eve(2, '10.2.0.10')].join('\n'),
+        })
+      ).status,
+    ).toBe(202);
+    const allAlerts = (await jsonOf(await get('/api/v1/alerts?open=true', noc))).items as Array<{
+      id: string;
+      assetId: string;
+    }>;
+    const dcAlert = allAlerts.find((a) => a.assetId === dcAsset)!.id;
+    const brAlert = allAlerts.find((a) => a.assetId === brAsset)!.id;
+
+    // Unrestricted: site inferred from the first attached alert, explicit, or global (null).
+    const inc = (body: Record<string, unknown>, token = analyst) =>
+      post('/api/v1/incidents', token, { title: 'Incident', severity: 'high', ...body });
+    const dcInc = await jsonOf(await inc({ alertIds: [dcAlert] }));
+    expect(dcInc.site).toBe('dc1');
+    const brInc = await jsonOf(await inc({ site: 'branch' }));
+    expect(brInc.site).toBe('branch');
+    const globalInc = await jsonOf(await inc({}));
+    expect(globalInc.site).toBeNull();
+    expect((await inc({ site: 'nope' })).status).toBe(400);
+    const proposal = (incidentId: string) => ({
+      kind: 'escalate',
+      incidentId,
+      targetType: 'incident',
+      targetRef: incidentId,
+      justification: 'Escalate for scoping test coverage',
+      rollbackPlan: 'Lower the severity back to the previous value',
+    });
+    const globalAction = await jsonOf(
+      await post('/api/v1/response-actions', analyst, proposal(globalInc.id)),
+    );
+    expect(globalAction.id).toBeTruthy();
+    const finding = (assetId: string, title: string) =>
+      h.handle.db.execute(
+        sql`insert into vulnerability_findings (asset_id, title, severity, description) values (${assetId}::uuid, ${title}, 'high', 'test')`,
+      );
+    await finding(dcAsset, 'SMB exposed');
+    await finding(brAsset, 'RDP exposed');
+    const mlRow = (assetId: string) =>
+      h.handle.db.execute(
+        sql`insert into ml_inference_results (model_name, model_version, feature_set_version, subject_type, subject_id, score, window_start, window_end) values ('baseline', '1', '1', 'asset', ${assetId}, 0.9, now() - interval '1 day', now())`,
+      );
+    await mlRow(dcAsset);
+    await mlRow(brAsset);
+    expect((await jsonOf(await get('/api/v1/findings', analyst))).items).toHaveLength(2);
+    expect((await jsonOf(await get('/api/v1/ml/results', blue))).items).toHaveLength(2);
+
+    // Restrict analyst and blue to dc1.
+    for (const id of [analystId, blueId])
+      expect(
+        (
+          await h.app.request(`/api/v1/users/${id}/sites`, {
+            method: 'PUT',
+            headers: authed(admin.token),
+            body: JSON.stringify({ allSites: false, sites: ['dc1'] }),
+          })
+        ).status,
+      ).toBe(200);
+    analyst = (await login(h, 'analyst@test.local', PW)).body.accessToken;
+    blue = (await login(h, 'blue@test.local', PW)).body.accessToken;
+
+    // Reads: only dc1 incidents; branch and global ones do not exist from this account's view.
+    const list = await jsonOf(await get('/api/v1/incidents?limit=50', analyst));
+    expect(list.items.map((i: { id: string }) => i.id)).toEqual([dcInc.id]);
+    expect((await jsonOf(await get('/api/v1/incidents/stats', analyst))).total).toBe(1);
+    expect((await get(`/api/v1/incidents/${dcInc.id}`, analyst)).status).toBe(200);
+    expect((await get(`/api/v1/incidents/${brInc.id}`, analyst)).status).toBe(404);
+    expect((await get(`/api/v1/incidents/${globalInc.id}`, analyst)).status).toBe(404);
+    expect(
+      (
+        await post(`/api/v1/incidents/${brInc.id}/transition`, analyst, {
+          to: 'triage',
+        })
+      ).status,
+    ).toBe(404);
+    // Writes: site outside the grants is refused and audited; no site at all is refused; an
+    // out-of-scope alert cannot be attached (reported as absent).
+    expect((await inc({ site: 'branch' })).status).toBe(403);
+    expect((await inc({})).status).toBe(400);
+    expect((await inc({ alertIds: [brAlert] })).status).toBe(404);
+    const mine = await jsonOf(await inc({ site: 'dc1' }));
+    expect(mine.site).toBe('dc1');
+    expect(
+      (await post(`/api/v1/incidents/${mine.id}/alerts`, analyst, { alertIds: [brAlert] })).status,
+    ).toBe(404);
+    // Response actions follow their incident.
+    expect((await post('/api/v1/response-actions', analyst, proposal(brInc.id))).status).toBe(404);
+    const dcAction = await jsonOf(
+      await post('/api/v1/response-actions', analyst, proposal(dcInc.id)),
+    );
+    expect(dcAction.incidentId).toBe(dcInc.id);
+    const actions = await jsonOf(await get('/api/v1/response-actions?limit=50', analyst));
+    expect(actions.items.map((a: { id: string }) => a.id)).toEqual([dcAction.id]);
+    expect((await get(`/api/v1/response-actions/${globalAction.id}`, analyst)).status).toBe(404);
+    // Findings and ML results follow their asset.
+    const findings = await jsonOf(await get('/api/v1/findings', analyst));
+    expect(findings.items.map((f: { assetId: string }) => f.assetId)).toEqual([dcAsset]);
+    const results = await jsonOf(await get('/api/v1/ml/results', blue));
+    expect(results.items.map((r: { subjectId: string }) => r.subjectId)).toEqual([dcAsset]);
+    expect(
+      (await post('/api/v1/ml/score', blue, { subjectType: 'asset', subjectId: brAsset })).status,
+    ).toBe(404);
+
+    const audit = await jsonOf(await get('/api/v1/audit?limit=100', admin.token));
+    expect(
+      audit.items.some(
+        (e: { action: string; outcome: string; metadata: { reason?: string } }) =>
+          e.action === 'incidents.create' &&
+          e.outcome === 'denied' &&
+          e.metadata.reason === 'site_not_granted',
+      ),
+    ).toBe(true);
   });
 });

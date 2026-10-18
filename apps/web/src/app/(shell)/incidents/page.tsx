@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { IncidentStats, IncidentSummary } from '@noc/shared';
+import { IncidentStats, IncidentSummary, Site } from '@noc/shared';
 import { getI18n } from '@/i18n/server';
 import type { MessageKey } from '@/i18n/messages';
 import { apiFetch } from '@/lib/api';
@@ -9,6 +9,7 @@ import { NewIncidentForm } from './new-incident-form';
 
 export const dynamic = 'force-dynamic';
 const Page = z.object({ items: z.array(IncidentSummary), nextCursor: z.string().nullable() });
+const Sites = z.object({ items: z.array(Site), restricted: z.boolean() });
 
 export default async function IncidentsPage({
   searchParams,
@@ -24,9 +25,12 @@ export default async function IncidentsPage({
     ...(all ? {} : { open: 'true' }),
     ...(cursor ? { cursor } : {}),
   });
-  const [stats, page] = await Promise.all([
+  const [stats, page, sites] = await Promise.all([
     apiFetch('/api/v1/incidents/stats', IncidentStats),
     apiFetch(`/api/v1/incidents?${qs}`, Page),
+    canManage
+      ? apiFetch('/api/v1/sites', Sites)
+      : Promise.resolve({ items: [], restricted: false }),
   ]);
   const fmt = new Intl.NumberFormat(locale === 'fa' ? 'fa-IR' : 'en-US');
   const when = new Intl.DateTimeFormat(locale === 'fa' ? 'fa-IR' : 'en-GB', {
@@ -78,12 +82,16 @@ export default async function IncidentsPage({
             severity: t('alerts.severity'),
             summary: t('inc.summary'),
             submit: t('inc.create'),
+            site: t('inc.site'),
+            siteAuto: t('inc.site_auto'),
             types: {
               security: t('inc.type.security'),
               noc_outage: t('inc.type.noc_outage'),
               policy_violation: t('inc.type.policy_violation'),
             },
           }}
+          sites={sites.items.map((s) => ({ key: s.key, name: s.name }))}
+          restricted={sites.restricted}
         />
       ) : null}
 
@@ -115,7 +123,7 @@ export default async function IncidentsPage({
                       {i.title}
                     </a>
                     <span className="ltr block text-[10px] text-muted">
-                      {t(`inc.type.${i.type}` as MessageKey)} · {i.id.slice(0, 8)}
+                      {t(`inc.type.${i.type}` as MessageKey)} · {i.site ?? '—'} · {i.id.slice(0, 8)}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-xs">{t(STATUS_LABEL[i.status])}</td>

@@ -13,7 +13,8 @@ export interface Limiter {
 
 /**
  * Minimal RESP2 client: one socket, pipelined commands, no dependency. Enough for EVAL/EVALSHA,
- * PING, FLUSHDB and AUTH; reconnects lazily on the next command after an error.
+ * PING, FLUSHDB, AUTH and PUBLISH/SUBSCRIBE; reconnects lazily on the next command after an
+ * error. Replies that arrive with no command outstanding (pub/sub pushes) go to `onPush`.
  */
 export class MiniRedis {
   private socket: net.Socket | null = null;
@@ -28,6 +29,10 @@ export class MiniRedis {
       password?: string;
       db?: number;
       timeoutMs?: number;
+      /** Unsolicited server pushes (SUBSCRIBE messages). */
+      onPush?: (msg: unknown) => void;
+      /** The socket closed (after an error or a server restart). */
+      onClose?: () => void;
     },
   ) {}
 
@@ -58,7 +63,10 @@ export class MiniRedis {
         this.fail(err);
         reject(err);
       });
-      s.on('close', () => this.fail(new Error('redis connection closed')));
+      s.on('close', () => {
+        this.fail(new Error('redis connection closed'));
+        this.opts.onClose?.();
+      });
     }).finally(() => (this.connecting = null));
     return this.connecting;
   }
@@ -76,7 +84,10 @@ export class MiniRedis {
       if (!r) return;
       this.buf = this.buf.subarray(r.next);
       const p = this.queue.shift();
-      if (!p) continue;
+      if (!p) {
+        this.opts.onPush?.(r.value);
+        continue;
+      }
       if (r.value instanceof Error) p.reject(r.value);
       else p.resolve(r.value);
     }

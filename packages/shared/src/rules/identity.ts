@@ -1,4 +1,5 @@
-export type MatchReason = 'agent_id' | 'cloud_instance_id' | 'mac_overlap' | 'hostname_segment';
+export type MatchReason =
+  'agent_id' | 'cloud_instance_id' | 'mac_overlap' | 'hostname_segment' | 'ip_sole_owner';
 
 export interface IdentityObservation {
   macAddresses: readonly string[];
@@ -31,8 +32,17 @@ export const MATCH_CONFIDENCE: Record<MatchReason, number> = {
   cloud_instance_id: 0.95,
   mac_overlap: 0.85,
   hostname_segment: 0.6,
+  ip_sole_owner: 0.55,
 };
 export const CREATE_CONFIDENCE = 0.5;
+
+/** True when the observation carries nothing but addresses (a reachability probe, a scan hit). */
+export const isIpOnlyObservation = (obs: IdentityObservation): boolean =>
+  obs.ipAddresses.length > 0 &&
+  obs.macAddresses.length === 0 &&
+  obs.hostnames.length === 0 &&
+  !obs.agentId &&
+  !obs.cloudInstanceId;
 
 const norm = (s: string) => s.trim().toLowerCase();
 const overlaps = (a: readonly string[], b: readonly string[]) => {
@@ -44,9 +54,12 @@ const overlaps = (a: readonly string[], b: readonly string[]) => {
 /**
  * Deterministic asset identity resolution. Tiers are tried in order of identifier stability:
  * authenticated agent id → cloud instance id → MAC overlap → hostname within the same segment.
- * An IP address is never an identity: with no stable identifier in common the observation creates
- * a new asset. Two or more candidates matching on the same tier is reported as ambiguous and
- * nothing is merged — a human (or a stronger identifier) must decide.
+ * An IP address is not an identity: an observation that carries a stable identifier never matches
+ * on address alone. The one exception is an **address-only** observation (a reachability probe or
+ * a scan hit, which can carry nothing else): it re-attaches to the asset that currently holds the
+ * address when exactly one does, at low confidence, so repeated probes do not mint a new asset
+ * per run. Two or more candidates matching on the same tier is reported as ambiguous and nothing
+ * is merged — a human (or a stronger identifier) must decide.
  */
 export function resolveAssetIdentity(
   obs: IdentityObservation,
@@ -68,6 +81,7 @@ export function resolveAssetIdentity(
       (c) =>
         !!obs.segmentId && obs.segmentId === c.segmentId && overlaps(obs.hostnames, c.hostnames),
     ],
+    ['ip_sole_owner', (c) => isIpOnlyObservation(obs) && overlaps(obs.ipAddresses, c.ipAddresses)],
   ];
 
   for (const [reason, matches] of tiers) {

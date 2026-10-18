@@ -65,6 +65,10 @@ export default async function IncidentPage({ params }: { params: Promise<{ id: s
             <span className="mx-2">·</span>
             {t(`inc.type.${incident.type}` as MessageKey)}
             <span className="mx-2">·</span>
+            <span className="ltr">
+              {t('inc.site')}: {incident.site ?? '—'}
+            </span>
+            <span className="mx-2">·</span>
             <span data-testid="incident-status">{states[incident.status]}</span>
             <span className="mx-2">·</span>
             {t('inc.opened')} {when.format(new Date(incident.openedAt))}

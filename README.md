@@ -161,10 +161,12 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   JIT provisioning with a group → role map, roles re-synced on login, and **no e-mail auto-link**
   to local accounts unless explicitly enabled. Enabled by setting `OIDC_ISSUER`, `OIDC_CLIENT_ID`
   and `OIDC_REDIRECT_URI`; the login page then offers SSO.
-- Site scoping: per-user site grants enforced inside asset, segment, sensor, alert and event
-  queries (404 for out-of-scope ids, unattributable rows hidden, empty grants = empty world).
-  Shared rate limiting across API instances with `REDIS_URL` (degrades to per-instance limits if
-  Redis is down). See `docs/phase7-progress.md` and `docs/deployment-profiles.md`.
+- Site scoping: per-user site grants enforced inside asset, segment, sensor, alert, event,
+  incident, response-action, finding and ML queries (404 for out-of-scope ids, unattributable
+  rows hidden, empty grants = empty world) and on writes (an incident cannot be opened outside
+  the actor's sites; foreign alerts cannot be attached). `REDIS_URL` enables shared rate limiting
+  and a cross-instance alert stream bus (both degrade to per-instance behaviour if Redis is down).
+  See `docs/phase7-progress.md` and `docs/deployment-profiles.md`.
 
 ## What Phase 0 provides
 
@@ -203,7 +205,7 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
 
 ## Roadmap
 
-Phase 1 asset inventory & NOC → Phase 2 NIDS & event pipeline → Phase 3 SOC & IR → Phase 4 NIPS (policy plane delivered) → Phase 5 assessments (engagements + connect-level workers delivered) → Phase 6 ML (advisory baseline delivered) → Phase 7 enterprise (SSO, site scoping, shared rate limiting delivered) &
+Phase 1 asset inventory & NOC → Phase 2 NIDS & event pipeline → Phase 3 SOC & IR → Phase 4 NIPS (policy plane delivered) → Phase 5 assessments (engagements + connect-level workers delivered) → Phase 6 ML (advisory baseline delivered) → Phase 7 enterprise (SSO, site scoping, shared rate limiting and alert bus delivered) &
 controlled response → Phase 5 authorized assessment → Phase 6 analytics → Phase 7 enterprise
 readiness. Details: `docs/phase-1-plan.md`, `docs/architecture.md`.
 

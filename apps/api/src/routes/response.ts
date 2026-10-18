@@ -14,6 +14,7 @@ import {
 import type { Deps } from '../app-deps';
 import { responseActions } from '../db/schema';
 import { requirePermission } from '../middleware/auth';
+import { responseActionSiteCondition, siteScope } from '../middleware/scope';
 import type { AppEnv } from '../middleware/context';
 import { ResponseActionService, executorCatalog, type Actor } from '../response/service';
 
@@ -51,6 +52,7 @@ export function responseRoutes(deps: Deps) {
       userId: p.userId,
       email: p.email,
       permissions: p.permissions,
+      sites: siteScope(p),
       requestId: c.get('requestId'),
       ip: c.get('clientIp'),
     };
@@ -103,6 +105,8 @@ export function responseRoutes(deps: Deps) {
     async (c) => {
       const q = c.req.valid('query');
       const conds: SQL[] = [];
+      const scope = responseActionSiteCondition(siteScope(c.get('principal')));
+      if (scope) conds.push(scope);
       if (q.incidentId) conds.push(eq(responseActions.incidentId, q.incidentId));
       if (q.status) conds.push(eq(responseActions.status, q.status));
       if (q.kind) conds.push(eq(responseActions.kind, q.kind));
@@ -158,7 +162,7 @@ export function responseRoutes(deps: Deps) {
         ...common,
       },
     }),
-    async (c) => c.json(await svc.get(c.req.valid('param').id), 200),
+    async (c) => c.json(await svc.get(c.req.valid('param').id, siteScope(c.get('principal'))), 200),
   );
 
   for (const decision of ['approve', 'reject'] as const)

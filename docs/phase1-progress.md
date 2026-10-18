@@ -8,8 +8,9 @@ Tracks delivered slices of `phase-1-plan.md`. Each entry lists what is verified 
 
 - `packages/shared/src/rules/identity.ts`: `resolveAssetIdentity` — tiered, deterministic
   (agent id 0.95 → cloud instance id 0.95 → MAC overlap 0.85 → hostname within the same segment
-  0.6). IP addresses are never an identity. Multiple matches on one tier → `ambiguous`, nothing
-  merged. `detectConflicts` records agent/cloud/MAC/hostname/segment disagreements.
+  0.6; since Phase 7 an _address-only_ observation may re-attach to the sole current holder of
+  the address at 0.55 — never when any stable identifier is present). Multiple matches on one
+  tier → `ambiguous`, nothing merged. `detectConflicts` records agent/cloud/MAC/hostname/segment disagreements.
 - `apps/api/src/assets/service.ts`: ingestion under a transaction-scoped advisory lock; candidate
   lookup via array-overlap on linked observations; segment inference from `network_segments.cidr`
   (most specific wins); one interface row per MAC; fill-if-null for collector-reported hardware

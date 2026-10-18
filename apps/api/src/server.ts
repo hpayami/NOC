@@ -8,6 +8,7 @@ import { createDb } from './db/client';
 import { RateLimiter } from './middleware/rate-limit';
 import { RedisRateLimiter } from './middleware/redis-limiter';
 import { AlertBus } from './events/bus';
+import { RedisAlertBus } from './events/redis-bus';
 import { AvailabilityService, MonitoringScheduler } from './monitoring/service';
 import { createMetrics } from './platform/metrics';
 import { syncRbacCatalog } from './platform/seed';
@@ -47,7 +48,7 @@ async function main() {
     audit,
     limiter: env.REDIS_URL ? new RedisRateLimiter(env.REDIS_URL, logger) : new RateLimiter(),
     metrics: createMetrics(),
-    bus: new AlertBus(),
+    bus: env.REDIS_URL ? new RedisAlertBus(env.REDIS_URL, logger) : new AlertBus(),
     retention,
     ips: new IpsService(handle.db, audit),
     ml: new MlService(handle.db, audit, logger, {
@@ -78,6 +79,8 @@ async function main() {
     logger.info({ signal }, 'shutting down');
     scheduler.stop();
     retentionScheduler.stop();
+    if (deps.bus instanceof RedisAlertBus) deps.bus.close();
+    if (deps.limiter instanceof RedisRateLimiter) deps.limiter.close();
     server.close();
     await handle.close();
     process.exit(0);

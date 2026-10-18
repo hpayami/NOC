@@ -22,6 +22,7 @@ import { AssessmentService, techniqueCatalog, type Actor } from '../assessments/
 import { AssetService } from '../assets/service';
 import { assessmentEngagements, vulnerabilityFindings } from '../db/schema';
 import { forbidden, requirePermission } from '../middleware/auth';
+import { findingSiteCondition, siteScope } from '../middleware/scope';
 import type { AppEnv } from '../middleware/context';
 
 const err = (d: string) => ({
@@ -57,6 +58,7 @@ export function assessmentRoutes(deps: Deps) {
       userId: p.userId,
       email: p.email,
       permissions: p.permissions,
+      sites: siteScope(p),
       requestId: c.get('requestId'),
       ip: c.get('clientIp'),
     };
@@ -332,6 +334,7 @@ export function findingRoutes(deps: Deps) {
       userId: p.userId,
       email: p.email,
       permissions: p.permissions,
+      sites: siteScope(p),
       requestId: c.get('requestId'),
       ip: c.get('clientIp'),
     };
@@ -356,6 +359,8 @@ export function findingRoutes(deps: Deps) {
     async (c) => {
       const q = c.req.valid('query');
       const conds: SQL[] = [];
+      const scope = findingSiteCondition(siteScope(c.get('principal')));
+      if (scope) conds.push(scope);
       if (q.engagementId) conds.push(eq(vulnerabilityFindings.engagementId, q.engagementId));
       if (q.assetId) conds.push(eq(vulnerabilityFindings.assetId, q.assetId));
       if (q.status) conds.push(eq(vulnerabilityFindings.status, q.status));

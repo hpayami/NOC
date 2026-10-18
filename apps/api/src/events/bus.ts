@@ -1,11 +1,18 @@
 import { EventEmitter } from 'node:events';
 import type { AlertStreamEvent } from '@noc/shared';
 
+/** What the SSE route and the publishers depend on; `AlertBus` (in-process) and `RedisAlertBus` implement it. */
+export interface AlertBusLike {
+  publish(event: AlertStreamEvent): void;
+  subscribe(listener: (event: AlertStreamEvent) => void): (() => void) | null;
+  readonly subscribers: number;
+}
+
 /**
- * In-process fan-out for live UI updates. Single-instance by design (Phase 7 swaps in NATS behind
- * the same interface). Listeners are capped so a stuck client cannot grow memory unbounded.
+ * In-process fan-out for live UI updates. Single-instance by design; `RedisAlertBus` wraps it for
+ * multi-instance deployments. Listeners are capped so a stuck client cannot grow memory unbounded.
  */
-export class AlertBus {
+export class AlertBus implements AlertBusLike {
   private readonly emitter = new EventEmitter();
   readonly maxListeners: number;
 

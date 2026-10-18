@@ -118,6 +118,8 @@ export const incidents = pgTable(
     commanderId: uuid('commander_id').references(() => users.id, { onDelete: 'set null' }),
     openedBy: uuid('opened_by').references(() => users.id, { onDelete: 'set null' }),
     summary: text('summary').notNull().default(''),
+    /** Site key (see `sites`); null = global. Not a FK so a removed site keeps its history. */
+    site: text('site'),
     openedAt: ts('opened_at').notNull().defaultNow(),
     closedAt: ts('closed_at'),
     closureReason: text('closure_reason'),
@@ -127,6 +129,7 @@ export const incidents = pgTable(
     index('incidents_status_severity_idx').on(t.status, t.severity),
     index('incidents_assignee_status_idx').on(t.assigneeId, t.status),
     index('incidents_opened_idx').on(t.openedAt),
+    index('incidents_site_idx').on(t.site),
   ],
 );
 

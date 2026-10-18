@@ -67,6 +67,6 @@ honest).
 **Known limitations / not delivered**
 
 External scanners (vulnerability, TLS, web, dependency) and detection validation have no worker;
-findings carry no CVSS unless an integration supplies it; the discovery job worker still mints a
-new asset per IP-only observation on re-runs (the assessment worker avoids this; the same reuse
-should be applied to discovery); engagement reports/export; evidence store beyond run records.
+findings carry no CVSS unless an integration supplies it; engagement reports/export; evidence
+store beyond run records. (The per-run asset minting for IP-only observations was closed in
+Phase 7: address-only observations re-attach to the sole holder of the address.)

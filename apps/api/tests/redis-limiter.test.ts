@@ -2,7 +2,8 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import net from 'node:net';
 import pino from 'pino';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { RedisRateLimiter, parseRedisUrl } from '../src/middleware/redis-limiter';
+import { MiniRedis, RedisRateLimiter, parseRedisUrl } from '../src/middleware/redis-limiter';
+import { RedisAlertBus } from '../src/events/redis-bus';
 
 const freePort = () =>
   new Promise<number>((resolve) => {
@@ -78,5 +79,69 @@ describe('shared rate limiter', () => {
     expect(results).toEqual([true, true, true, false]);
     expect(dead.isDegraded).toBe(true);
     dead.close();
+  });
+});
+
+describe('shared alert bus', () => {
+  it('fans alerts out across instances exactly once and drops malformed messages', async () => {
+    const a = new RedisAlertBus(url, logger, 'test:alerts');
+    const b = new RedisAlertBus(url, logger, 'test:alerts');
+    await Promise.all([a.listen(), b.listen()]);
+    const gotA: string[] = [];
+    const gotB: string[] = [];
+    const offA = a.subscribe((e) => gotA.push(e.alertId));
+    const offB = b.subscribe((e) => gotB.push(e.alertId));
+    expect(offA && offB).toBeTruthy();
+    const ev = {
+      kind: 'created' as const,
+      alertId: '11111111-1111-4111-8111-111111111111',
+      severity: 'high' as const,
+      title: 'cross-instance',
+      at: new Date().toISOString(),
+    };
+    a.publish(ev);
+    for (let i = 0; i < 50 && gotB.length === 0; i++) await new Promise((r) => setTimeout(r, 50));
+    expect(gotB).toEqual([ev.alertId]);
+    // The publishing instance delivered locally once; the echo of its own message is ignored.
+    await new Promise((r) => setTimeout(r, 150));
+    expect(gotA).toEqual([ev.alertId]);
+    expect(b.receivedCount).toBe(1);
+    expect(a.receivedCount).toBe(0);
+    // Garbage and contract-violating payloads on the channel are dropped, not fanned out.
+    const raw = new MiniRedis(parseRedisUrl(url));
+    await raw.command('PUBLISH', 'test:alerts', 'not json');
+    await raw.command(
+      'PUBLISH',
+      'test:alerts',
+      JSON.stringify({ origin: 'x', event: { kind: 'created', alertId: 'nope' } }),
+    );
+    await raw.command('PUBLISH', 'test:alerts', JSON.stringify({ origin: 'y', event: ev }));
+    for (let i = 0; i < 50 && gotB.length < 2; i++) await new Promise((r) => setTimeout(r, 50));
+    expect(gotB).toEqual([ev.alertId, ev.alertId]);
+    expect(gotA).toEqual([ev.alertId, ev.alertId]);
+    raw.close();
+    offA!();
+    offB!();
+    expect(a.subscribers).toBe(0);
+    a.close();
+    b.close();
+  });
+
+  it('serves local subscribers when redis is unreachable and reports degradation', async () => {
+    const port = await freePort();
+    const bus = new RedisAlertBus(`redis://127.0.0.1:${port}/0`, logger, 'test:alerts');
+    const got: string[] = [];
+    bus.subscribe((e) => got.push(e.alertId));
+    bus.publish({
+      kind: 'created',
+      alertId: '22222222-2222-4222-8222-222222222222',
+      severity: 'low',
+      title: 'local only',
+      at: new Date().toISOString(),
+    });
+    for (let i = 0; i < 40 && !bus.isDegraded; i++) await new Promise((r) => setTimeout(r, 50));
+    expect(got).toHaveLength(1);
+    expect(bus.isDegraded).toBe(true);
+    bus.close();
   });
 });

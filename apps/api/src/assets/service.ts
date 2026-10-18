@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, isNotNull, or, sql, type SQL } from 'drizzle-orm';
 import {
   CREATE_CONFIDENCE,
+  isIpOnlyObservation,
   resolveAssetIdentity,
   type CandidateAsset,
   type DiscoveryMethod,
@@ -72,6 +73,16 @@ export class AssetService {
         hostnames,
         agentId: ids.agentId,
         cloudInstanceId: ids.cloudInstanceId,
+        // Address-only observations may re-attach to the current holder of the address only.
+        ipsIfAddressOnly: isIpOnlyObservation({
+          macAddresses: macs,
+          ipAddresses: ids.ipAddresses,
+          hostnames,
+          agentId: ids.agentId ?? null,
+          cloudInstanceId: ids.cloudInstanceId ?? null,
+        })
+          ? [...ids.ipAddresses]
+          : [],
       });
       const decision = resolveAssetIdentity(
         {
@@ -207,6 +218,8 @@ async function loadCandidates(
     hostnames: string[];
     agentId?: string | undefined;
     cloudInstanceId?: string | undefined;
+    /** Set only for address-only observations: candidates are the current owners of the addresses. */
+    ipsIfAddressOnly?: string[];
   },
 ): Promise<CandidateAsset[]> {
   const conds: SQL[] = [];
@@ -215,14 +228,27 @@ async function loadCandidates(
     conds.push(sql`${assetObservations.hostnames} && ${textArray(k.hostnames)}`);
   if (k.agentId) conds.push(eq(assetObservations.agentId, k.agentId));
   if (k.cloudInstanceId) conds.push(eq(assetObservations.cloudInstanceId, k.cloudInstanceId));
-  if (conds.length === 0) return [];
-
-  const hits = await tx
-    .selectDistinct({ assetId: assetObservations.assetId })
-    .from(assetObservations)
-    .where(and(isNotNull(assetObservations.assetId), or(...conds)))
-    .limit(50);
-  const candidateIds = hits.map((h) => h.assetId).filter((x): x is string => !!x);
+  let candidateIds: string[] = [];
+  if (conds.length > 0) {
+    const hits = await tx
+      .selectDistinct({ assetId: assetObservations.assetId })
+      .from(assetObservations)
+      .where(and(isNotNull(assetObservations.assetId), or(...conds)))
+      .limit(50);
+    candidateIds = hits.map((h) => h.assetId).filter((x): x is string => !!x);
+  } else if (k.ipsIfAddressOnly?.length) {
+    const owners = await tx
+      .selectDistinct({ assetId: assetInterfaces.assetId })
+      .from(assetInterfaces)
+      .where(
+        sql`${assetInterfaces.ipAddresses} && ARRAY[${sql.join(
+          k.ipsIfAddressOnly.map((ip) => sql`${ip}::inet`),
+          sql`, `,
+        )}]`,
+      )
+      .limit(50);
+    candidateIds = owners.map((o) => o.assetId);
+  }
   if (candidateIds.length === 0) return [];
 
   const [assetRows, obsRows] = await Promise.all([

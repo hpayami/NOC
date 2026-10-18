@@ -15,7 +15,7 @@ import { HTTPException } from 'hono/http-exception';
 import type { Db } from '../db/client';
 import { alerts, assets, securityEvents, sensors } from '../db/schema';
 import type { Metrics } from '../platform/metrics';
-import type { AlertBus } from './bus';
+import type { AlertBusLike } from './bus';
 import { resolveRuleIds } from '../rules/service';
 
 export interface IngestSource {
@@ -75,7 +75,7 @@ export class EventPipeline {
   constructor(
     private readonly db: Db,
     private readonly metrics: Metrics,
-    private readonly bus: AlertBus,
+    private readonly bus: AlertBusLike,
   ) {}
 
   async ingestEve(body: string, source: IngestSource): Promise<IngestReport> {

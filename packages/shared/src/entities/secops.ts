@@ -115,6 +115,8 @@ export const Incident = z.strictObject({
   assigneeId: Id.nullable(),
   commanderId: Id.nullable(),
   summary: LongText,
+  /** Site the incident belongs to; null = global (visible only to unrestricted users). */
+  site: z.string().max(32).nullable(),
   openedAt: Timestamp,
   closedAt: Timestamp.nullable(),
   closureReason: LongText.nullable(),

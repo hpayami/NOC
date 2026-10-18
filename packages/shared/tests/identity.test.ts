@@ -34,6 +34,32 @@ describe('asset identity resolution', () => {
     expect(r).toMatchObject({ action: 'create', reason: 'no_stable_identifier_match' });
   });
 
+  it('re-attaches an address-only observation to the single current holder of the address', () => {
+    const owner = cand('a', { macAddresses: ['aa:bb:cc:dd:ee:01'], ipAddresses: ['10.0.0.1'] });
+    expect(
+      resolveAssetIdentity({ macAddresses: [], ipAddresses: ['10.0.0.1'], hostnames: [] }, [owner]),
+    ).toMatchObject({ action: 'match', assetId: 'a', reason: 'ip_sole_owner', confidence: 0.55 });
+    // Two holders (DHCP reuse, stale interface): ambiguous, nothing merged.
+    expect(
+      resolveAssetIdentity({ macAddresses: [], ipAddresses: ['10.0.0.1'], hostnames: [] }, [
+        owner,
+        cand('b', { ipAddresses: ['10.0.0.1'] }),
+      ]),
+    ).toMatchObject({ action: 'ambiguous', reason: 'ip_sole_owner', candidateIds: ['a', 'b'] });
+    // Any stable identifier disables the address tier: a different MAC on the same IP is a new device.
+    expect(
+      resolveAssetIdentity(
+        { macAddresses: ['aa:bb:cc:dd:ee:09'], ipAddresses: ['10.0.0.1'], hostnames: [] },
+        [owner],
+      ),
+    ).toMatchObject({ action: 'create', reason: 'no_stable_identifier_match' });
+    expect(
+      resolveAssetIdentity({ macAddresses: [], ipAddresses: ['10.0.0.1'], hostnames: ['x'] }, [
+        owner,
+      ]),
+    ).toMatchObject({ action: 'create' });
+  });
+
   it('matches on MAC overlap regardless of case and IP change', () => {
     const existing = cand('a', { macAddresses: ['aa:bb:cc:dd:ee:01'], ipAddresses: ['10.0.0.1'] });
     const r = resolveAssetIdentity(

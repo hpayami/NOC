@@ -38,8 +38,10 @@ Never report "zero packet loss" or "complete visibility" without counters from t
 - Sessions need nothing shared: access tokens are stateless JWTs and refresh-token families live
   in PostgreSQL.
 - OIDC login state lives in PostgreSQL (`oidc_states`), so the callback may land on any instance.
-- The SSE alert stream (`/api/v1/alerts/stream`) is fed by an in-process bus: route each browser
-  consistently to one instance (sticky sessions on `/stream/alerts`) or accept that an instance
-  only pushes the alerts it ingested itself. Polling clients are unaffected.
+- With `REDIS_URL` the SSE alert stream (`/api/v1/alerts/stream`) is fed by a Redis pub/sub bus:
+  a browser attached to any instance sees alerts ingested on every instance, so no sticky
+  sessions are needed. Delivery is at-most-once (the stream is a nudge to re-fetch); if Redis
+  drops, each instance keeps serving its own alerts and reconnects with backoff. Without
+  `REDIS_URL` the bus is in-process and an instance only pushes what it ingested itself.
 - Schedulers (monitoring checks, retention, IPS expiry) are idempotent but run on every instance;
   set `MONITORING_SCHEDULER_ENABLED=false` / `RETENTION_ENABLED=false` on all but one.

@@ -95,3 +95,56 @@ Incidents, response actions, assessments, detection rules and ML results are not
 stream is per-instance (a multi-instance deployment needs sticky sessions for `/stream/alerts`
 or a shared bus — documented in the deployment profiles); writes (observations, sensor
 registration) are not yet refused for sites outside the actor's grants.
+
+## Slice 3 — Scoped SOC objects, shared alert bus, address-only re-attachment (2026-10-18)
+
+**Delivered**
+
+- **Site scoping extended to the SOC objects.** Incidents now carry a `site` (nullable; null =
+  global). On creation the site is the explicit one, else the first attributable attached
+  alert's (through its asset's segment). Enforcement is in `IncidentService` and the response,
+  ML and findings services, not in routes: list/detail/stats/transition/update/note/link all
+  carry the predicate; a response action is visible through its incident; a finding and an ML
+  result through their asset; `POST /ml/score` and `POST /ml/score/batch` only touch assets in
+  scope. Out-of-scope ids answer **404**; global incidents, actions without an incident and
+  non-asset ML subjects are hidden from restricted principals.
+- **Write-side refusal.** A restricted actor opening an incident outside their grants gets
+  **403** and an audited `incidents.create` / `denied` (`reason: site_not_granted`); with nothing
+  to attribute the site to they get **400** (a global incident they could never see again is not
+  created silently); an alert outside their scope cannot be attached — it is reported as absent
+  (404) and never reveals its site. Unknown explicit site keys are 400 for everyone.
+- **Shared alert bus.** `RedisAlertBus` (`apps/api/src/events/redis-bus.ts`, active when
+  `REDIS_URL` is set) fans alert stream events out over Redis pub/sub so an SSE client attached
+  to any API instance sees alerts ingested on every instance. Semantics stay at-most-once and
+  best effort (the stream is a nudge to re-fetch, never the record); payloads from the channel
+  are validated against the shared `AlertStreamEvent` contract and dropped otherwise; an
+  instance ignores the echo of its own messages; local subscribers are always served and a Redis
+  outage is logged once with reconnect/backoff. `MiniRedis` gained pub/sub push and close hooks.
+- **Address-only observations re-attach.** `resolveAssetIdentity` gained a last tier,
+  `ip_sole_owner` (confidence 0.55): an observation that carries _only_ addresses (a discovery
+  probe, an assessment hit) matches the asset that currently holds the address when exactly one
+  does, is `ambiguous` when several do, and still creates when none does. Any stable identifier
+  on the observation disables the tier — a new MAC on a reused IP is still a new device. The
+  discovery and assessment workers now share this one path (the assessment worker's private
+  lookup was removed), so repeated runs stop minting an asset per IP.
+- Web: incident site in the list and detail, site selector on the new-incident form (restricted
+  users must pick one of their sites; unrestricted users may leave it automatic/global).
+- Schema (`0013_phase7_incident_site_bus`): `incidents.site` + index.
+
+**Verified**
+
+Shared: identity tier (sole owner match, two holders ambiguous, stable identifier disables the
+tier). API: scoping test part 2 — inferred/explicit/global incident sites, unknown site 400;
+after restriction: list/stats/detail/transition scoped, 403 + audit for a foreign site, 400 for
+no site, 404 for foreign alerts at creation and link time, response actions scoped through the
+incident (propose, list, detail), findings and ML results through the asset, scoring a foreign
+asset 404. Bus test against a real `redis-server`: two instances, one delivery each, own echo
+ignored, garbage and contract-violating payloads dropped, unreachable Redis still serves local
+subscribers and reports degradation. Assets test: scan hit re-attaches to the sole holder and an
+unowned address still creates. Totals: shared 99, API 97, web 4, pytest 8; e2e 5/5.
+
+**Known limitations**
+
+Assessment engagements and detection rules are still global (engagement scope is CIDR-based and
+authorised per engagement, not per site); the bus does not replay missed events (reconnecting
+clients re-fetch the queue); OIDC logout / back-channel logout remain open.

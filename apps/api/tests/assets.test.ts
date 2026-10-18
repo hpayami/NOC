@@ -138,6 +138,25 @@ describe('observation ingestion and identity resolution', () => {
     expect((await list(analyst)).items).toHaveLength(2);
   });
 
+  it('re-attaches address-only observations (scan hits) to the sole holder of the address', async () => {
+    const first = await jsonOf(await post(collector, obs()));
+    const probe = (ip: string) =>
+      post(collector, {
+        source: 'discovery:test',
+        method: 'tcp_service_check',
+        observedAt: '2026-10-18T11:00:00Z',
+        identifiers: { macAddresses: [], ipAddresses: [ip], hostnames: [] },
+        attributes: { openPorts: '22' },
+      });
+    const r = await jsonOf(await probe('10.20.5.9'));
+    expect(r.decision).toBe('match');
+    expect(r.assetId).toBe(first.assetId);
+    expect((await list(analyst)).items).toHaveLength(1);
+    // An address nobody holds still creates (a reachable host is an asset, however thin).
+    expect((await jsonOf(await probe('10.20.5.250'))).decision).toBe('create');
+    expect((await list(analyst)).items).toHaveLength(2);
+  });
+
   it('prefers the agent id and records a MAC conflict', async () => {
     await post(collector, obs({}, { agentId: 'agent-7', macAddresses: ['11:22:33:44:55:66'] }));
     const r = await jsonOf(

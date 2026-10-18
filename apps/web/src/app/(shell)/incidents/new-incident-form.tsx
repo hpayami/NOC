@@ -6,10 +6,19 @@ import { createIncident, type ActionState } from './actions';
 
 export function NewIncidentForm({
   labels,
+  sites,
+  restricted,
 }: {
-  labels: Record<'heading' | 'title' | 'type' | 'severity' | 'summary' | 'submit', string> & {
+  labels: Record<
+    'heading' | 'title' | 'type' | 'severity' | 'summary' | 'submit' | 'site' | 'siteAuto',
+    string
+  > & {
     types: Record<(typeof IncidentTypeValues)[number], string>;
   };
+  /** Sites the user may attribute an incident to (already filtered by the API to their grants). */
+  sites: Array<{ key: string; name: string }>;
+  /** A site-restricted user must pick one; the API refuses global incidents for them. */
+  restricted: boolean;
 }) {
   const [state, action, pending] = useActionState<ActionState, FormData>(createIncident, null);
   const input = 'w-full rounded-md border border-border bg-surface-2 px-3 py-2 text-sm';
@@ -39,6 +48,17 @@ export function NewIncidentForm({
           {SeverityValues.map((v) => (
             <option key={v} value={v}>
               {v}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="space-y-1 text-sm">
+        <span className="text-muted">{labels.site}</span>
+        <select name="site" className={`ltr ${input}`} required={restricted} defaultValue="">
+          {restricted ? null : <option value="">{labels.siteAuto}</option>}
+          {sites.map((s) => (
+            <option key={s.key} value={s.key}>
+              {s.key} — {s.name}
             </option>
           ))}
         </select>

@@ -1,7 +1,7 @@
 import type { Logger } from 'pino';
 import type { AuditService } from './audit/service';
 import type { OidcService } from './auth/oidc';
-import type { AlertBus } from './events/bus';
+import type { AlertBusLike } from './events/bus';
 import type { Env } from './config/env';
 import type { IpsService } from './ips/service';
 import type { MlService } from './ml/service';
@@ -19,7 +19,7 @@ export interface Deps {
   audit: AuditService;
   limiter: Limiter;
   metrics: Metrics;
-  bus: AlertBus;
+  bus: AlertBusLike;
   retention: RetentionService;
   ips: IpsService;
   ml: MlService;

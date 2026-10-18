@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { Id, LongText, ShortText, Timestamp } from '../common';
 import { IncidentStatus, IncidentType, Severity } from '../enums';
 import { Alert, Incident } from './secops';
+import { SiteKey } from './sites';
 
 /** Append-only timeline entry kinds. Everything that changes an incident leaves one. */
 export const INCIDENT_TIMELINE_KINDS = [
@@ -54,6 +55,11 @@ export const CreateIncidentRequest = z.strictObject({
   summary: LongText.default(''),
   /** Alerts to attach at creation; open ones are escalated. */
   alertIds: z.array(Id).max(50).default([]),
+  /**
+   * Site of the incident. Omitted: inferred from the first attached alert's asset. A site-scoped
+   * user must end up with a site inside their grants, otherwise the request is refused.
+   */
+  site: SiteKey.nullable().default(null),
 });
 export type CreateIncidentRequest = z.infer<typeof CreateIncidentRequest>;
 

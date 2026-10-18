@@ -13,6 +13,7 @@ import {
 import type { Deps } from '../app-deps';
 import { mlInferenceResults } from '../db/schema';
 import { requirePermission } from '../middleware/auth';
+import { mlResultSiteCondition, siteScope } from '../middleware/scope';
 import type { AppEnv } from '../middleware/context';
 import type { Actor } from '../ml/service';
 
@@ -34,6 +35,7 @@ export function mlRoutes(deps: Deps) {
     return {
       userId: p.userId,
       email: p.email,
+      sites: siteScope(p),
       requestId: c.get('requestId'),
       ip: c.get('clientIp'),
     };
@@ -78,6 +80,8 @@ export function mlRoutes(deps: Deps) {
     async (c) => {
       const q = c.req.valid('query');
       const conds: SQL[] = [];
+      const scope = mlResultSiteCondition(siteScope(c.get('principal')));
+      if (scope) conds.push(scope);
       if (q.subjectId) conds.push(eq(mlInferenceResults.subjectId, q.subjectId));
       if (q.minScore !== undefined) conds.push(gte(mlInferenceResults.score, q.minScore));
       return c.json({ items: await svc.list(conds, q.limit) }, 200);

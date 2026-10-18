@@ -34,6 +34,7 @@ export async function createIncident(_prev: ActionState, formData: FormData): Pr
     severity: formData.get('severity'),
     summary: String(formData.get('summary') ?? ''),
     alertIds,
+    site: String(formData.get('site') ?? '') || null,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'invalid' };
   let id: string;

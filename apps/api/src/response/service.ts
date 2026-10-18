@@ -15,6 +15,7 @@ import {
 } from '@noc/shared';
 import { canonicalJson, type AuditService } from '../audit/service';
 import type { Db, DbTx } from '../db/client';
+import { incidentSiteCondition, responseActionSiteCondition } from '../middleware/scope';
 import {
   approvals,
   assets,
@@ -30,6 +31,8 @@ export interface Actor {
   userId: string;
   email: string;
   permissions: ReadonlySet<Permission>;
+  /** Site grants; null = unrestricted. Actions are scoped through their incident. */
+  sites: readonly string[] | null;
   requestId: string | null;
   ip: string | null;
 }
@@ -312,11 +315,11 @@ export class ResponseActionService {
       .orderBy(approvals.decidedAt);
   }
 
-  private async lock(tx: DbTx, id: string): Promise<ActionRow> {
+  private async lock(tx: DbTx, id: string, actor: Actor): Promise<ActionRow> {
     const [row] = await tx
       .select()
       .from(responseActions)
-      .where(eq(responseActions.id, id))
+      .where(and(eq(responseActions.id, id), responseActionSiteCondition(actor.sites)))
       .limit(1)
       .for('update');
     if (!row) throw new HTTPException(404, { message: 'Response action not found' });
@@ -380,7 +383,7 @@ export class ResponseActionService {
       const [inc] = await this.db
         .select({ status: incidents.status })
         .from(incidents)
-        .where(eq(incidents.id, input.incidentId))
+        .where(and(eq(incidents.id, input.incidentId), incidentSiteCondition(actor.sites)))
         .limit(1);
       if (!inc) throw new HTTPException(404, { message: 'Incident not found' });
       if (inc.status === 'closed')
@@ -446,7 +449,7 @@ export class ResponseActionService {
     const [peek] = await this.db
       .select()
       .from(responseActions)
-      .where(eq(responseActions.id, id))
+      .where(and(eq(responseActions.id, id), responseActionSiteCondition(actor.sites)))
       .limit(1);
     if (!peek) throw new HTTPException(404, { message: 'Response action not found' });
     const prior = await this.approvalsOf(id);
@@ -482,7 +485,7 @@ export class ResponseActionService {
       );
     }
     const row = await this.db.transaction(async (tx) => {
-      const cur = await this.expireIfDue(tx, await this.lock(tx, id), now);
+      const cur = await this.expireIfDue(tx, await this.lock(tx, id, actor), now);
       if (cur.status !== 'pending_approval')
         throw new HTTPException(409, { message: 'Action is not awaiting approval' });
       await tx.insert(approvals).values({
@@ -532,7 +535,7 @@ export class ResponseActionService {
     const now = new Date();
     // Phase 1: claim the action under lock; every refusal here is audited and nothing runs.
     const claimed = await this.db.transaction(async (tx) => {
-      const cur = await this.expireIfDue(tx, await this.lock(tx, id), now);
+      const cur = await this.expireIfDue(tx, await this.lock(tx, id, actor), now);
       const aps = await this.approvalsOf(id, tx);
       const refuse = (
         status: number,
@@ -628,7 +631,7 @@ export class ResponseActionService {
     actor: Actor,
   ): Promise<ResponseActionRecord> {
     const row = await this.db.transaction(async (tx) => {
-      const cur = await this.lock(tx, id);
+      const cur = await this.lock(tx, id, actor);
       if (cur.status !== 'executed' && cur.status !== 'verification_failed')
         throw new HTTPException(409, {
           message: `Only executed actions can be rolled back (status: ${cur.status})`,
@@ -655,11 +658,11 @@ export class ResponseActionService {
     return toRecord(row, await this.approvalsOf(id));
   }
 
-  async get(id: string): Promise<ResponseActionRecord> {
+  async get(id: string, sites: readonly string[] | null): Promise<ResponseActionRecord> {
     const [row] = await this.db
       .select()
       .from(responseActions)
-      .where(eq(responseActions.id, id))
+      .where(and(eq(responseActions.id, id), responseActionSiteCondition(sites)))
       .limit(1);
     if (!row) throw new HTTPException(404, { message: 'Response action not found' });
     return toRecord(row, await this.approvalsOf(id));
