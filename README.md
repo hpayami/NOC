@@ -197,6 +197,15 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   entries; known-exploited and CVSS ≥ 9 raise the explained asset risk. Enrichment is by CVE id
   only, never by product name. Capability `vuln.catalog` reports the state.
 
+## Pentest — methodology tracking
+
+- `/pentest` tracks a fixed, non-destructive, PTES-aligned methodology per authorised engagement
+  (`GET /api/v1/pentest/engagements/{id}/plan`, `PUT …/plan/{key}` under `assessments.execute`).
+  Nothing beyond pre-engagement moves before approval; evidence steps are "done" only with the
+  engagement's own runs or findings; blocked and not-applicable need a reason; every change is
+  audited. Exploitation, privilege escalation, persistence and denial of service are neither
+  performed nor tracked.
+
 ## Blue team — detection coverage
 
 - `GET /api/v1/detection-rules/coverage?days=30` scores every ATT&CK technique in the catalogue:

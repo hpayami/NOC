@@ -141,6 +141,13 @@
       "when": 1792352698677,
       "tag": "0019_phase3_threat_intel",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792360187943,
+      "tag": "0020_phase5_pentest_methodology",
+      "breakpoints": true
     }
   ]
 }

@@ -97,10 +97,10 @@ export const NAV: NavItem[] = [
   {
     slug: 'pentest',
     label: 'nav.pentest',
-    capabilities: ['assessment.engagements'],
+    capabilities: ['assessment.engagements', 'assessment.workers'],
     permission: 'assessments.read',
     phase: 5,
-    implemented: false,
+    implemented: true,
   },
   {
     slug: 'vulnerabilities',

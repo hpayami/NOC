@@ -17,6 +17,7 @@ import { vulnerabilityRoutes } from './routes/vulnerabilities';
 import { operationsRoutes } from './routes/operations';
 import { threatIntelRoutes } from './routes/threat-intel';
 import { reportRoutes } from './routes/reports';
+import { pentestRoutes } from './routes/pentest';
 import { ingestRoutes } from './routes/ingest';
 import { responseRoutes } from './routes/response';
 import { retentionRoutes } from './routes/retention';
@@ -131,6 +132,7 @@ export function createApp(deps: Deps) {
   app.route('/api/v1/operations', operationsRoutes(deps, deps.operations));
   app.route('/api/v1/threat-intel', threatIntelRoutes(deps, deps.threatIntel));
   app.route('/api/v1/reports', reportRoutes(deps));
+  app.route('/api/v1/pentest', pentestRoutes(deps));
   app.route('/api/v1/ml', mlRoutes(deps));
   app.route('/api/v1/retention', retentionRoutes(deps, deps.retention));
   app.route('/api/v1/platform', platformRoutes(deps));

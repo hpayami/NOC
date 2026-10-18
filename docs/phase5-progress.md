@@ -206,3 +206,58 @@ No scheduled or stored reports (each call recomputes; the audit trail records wh
 what); no per-site breakdown inside a report (one scope per report); the audit-chain check runs
 over the whole trail on every generation by an `audit.read` reader; alert acknowledgement time
 remains untracked by design until alerts carry status timestamps.
+
+## Slice 5 — Pentest workspace: methodology tracking per engagement (2026-10-18)
+
+**Delivered**
+
+- **Catalogue** (`packages/shared/src/rules/pentest.ts`, `PENTEST_METHODOLOGY`, code not data):
+  sixteen non-destructive steps across seven PTES-aligned phases — pre-engagement
+  (authorisation, scope confirmed, rules of engagement, NOC/SOC notified), reconnaissance
+  (passive discovery, exposure review), enumeration (host discovery, service fingerprinting),
+  vulnerability analysis (version identification, configuration review), verification
+  (evidence without exploitation, false-positive review), post-engagement (stop conditions and
+  deviations, nothing left behind), reporting (report delivered, remediation tracked). Steps
+  mapped to a platform technique require evidence; exploitation, privilege escalation,
+  persistence, lateral movement and denial of service are neither performed nor tracked.
+- **Rules** (pure): `pentestWorkAllowed` (only approved/active/paused/completed engagements may
+  progress non-pre-engagement steps), `checkItemUpdate` (`done` on an evidence step needs a
+  run or finding; `blocked` and `not_applicable` need a note; resetting is always allowed),
+  `pentestProgress` (completion over applicable steps, per phase).
+- **Store** (`0020_phase5_pentest_methodology`, `pentest_items`): only the state an operator
+  set — status, note, run and finding references, who and when — unique per (engagement, key).
+  Plans materialise from the catalogue on read, so every engagement has one.
+- **Service** (`PentestService`): plan with engagement context (status, scope versions, window,
+  allowed techniques), whether work may proceed and why not, executable flag per technique
+  (worker present here); `updateItem` verifies that referenced runs and findings belong to
+  **this** engagement (404 otherwise), applies the rules (409 with the reason), and audits
+  success and denial (`pentest.item_update`); `summaries` for the list.
+- API `/api/v1/pentest`: `GET /methodology`, `GET /plans?engagementIds=`,
+  `GET /engagements/{id}/plan` (`assessments.read`); `PUT /engagements/{id}/plan/{key}`
+  (`assessments.execute`).
+- Web `/pentest` (engagements with completion, blocked count, last update) and `/pentest/[id]`
+  (plan by phase with status/technique/evidence badges, work-allowed banner with the reason,
+  per-step form for status, note, run and finding references; read-only note otherwise). All
+  19 workspaces are now implemented; the honest placeholder page keeps no routes.
+
+**Verified**
+
+Shared (3): catalogue validity, unique keys, every phase represented, no destructive wording,
+technique steps require evidence; approval gating per phase, evidence and note rules,
+resets allowed; progress arithmetic over applicable steps and per phase. API (1): methodology
+visible to a read-only auditor, not to the platform admin; plan on a draft with all steps
+not started, work blocked with the reason, executable flags (host discovery yes, vulnerability
+scan no worker, documentary null); auditor and approver 403 on update, unknown step 404,
+pre-engagement step done on a draft, enumeration refused before approval with the reason,
+`blocked` without note refused; after two-person approval and activation, `done` without
+evidence refused, in-progress accepted, a run of another engagement refused as evidence
+(404), the engagement's own dry run accepted, `not_applicable` with reason accepted; progress
+and per-phase counts; summaries for several ids ignoring garbage; audit shows 4 successes
+and the denials. Totals: shared 133, API 112 (29 files), web 5, pytest 8 + agent 7; e2e 5/5
+(red-team operator records a pre-engagement step and is refused on enumeration while pending).
+
+**Known limitations**
+
+Steps are operator assertions with evidence links, not automated verification; the catalogue
+is fixed (no per-organisation methodology yet); evidence selection lists runs and findings of
+the engagement only (by design) and the UI uses plain multi-selects.

@@ -14,6 +14,9 @@ describe('navigation and i18n', () => {
       for (const l of LOCALES) expect(MESSAGES[l][n.label], `${l}:${n.label}`).toBeTruthy();
     }
   });
+  it('marks every workspace as implemented (all 19 delivered)', () => {
+    expect(NAV.every((n) => n.implemented)).toBe(true);
+  });
   it('marks only delivered workspaces (Phase ≤ 6) as implemented', () => {
     expect(
       NAV.filter((n) => n.implemented)
@@ -31,6 +34,7 @@ describe('navigation and i18n', () => {
       'nids',
       'nips',
       'noc',
+      'pentest',
       'red-team',
       'reports',
       'sensors',

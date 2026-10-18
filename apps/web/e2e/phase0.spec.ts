@@ -167,9 +167,9 @@ test.describe('Phase 0 shell', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('گزارش‌ها');
     await expect(page.getByTestId('report-rep.governance')).toContainText('محفوظ');
     await expect(page.getByTestId('report-rep.incidents')).toContainText('در دسترس');
-    // Unimplemented workspace shows real capability state, never sample data.
+    // Every workspace is implemented; one outside the analyst's permissions is refused, not faked.
     await page.goto('/pentest');
-    await expect(page.getByText('این بخش هنوز عملیاتی نیست')).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('دسترسی مجاز نیست');
     // Analysts cannot administer users: forbidden page, not a crash.
     await page.goto('/administration');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('دسترسی مجاز نیست');
@@ -236,6 +236,21 @@ test.describe('Phase 0 shell', () => {
     await expect(page.getByTestId('eng-status')).toHaveText('در انتظار تأیید');
     // The operator cannot approve their own engagement: no decision form.
     await expect(page.getByRole('button', { name: 'تأیید', exact: true })).toHaveCount(0);
+    // Pentest methodology: the pending engagement is listed at 0 %, work is blocked until approval,
+    // yet a pre-engagement step can be recorded.
+    await page.goto('/pentest');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('آزمون نفوذ — روش‌شناسی');
+    await page.getByRole('link', { name: 'ENG-E2E-1' }).click();
+    await expect(page).toHaveURL(/\/pentest\/[0-9a-f-]{36}$/);
+    await expect(page.getByTestId('pt-work')).toContainText('کار مسدود است');
+    const pre = page.getByTestId('pt-item-pre.authorization');
+    await pre.getByLabel('وضعیت').selectOption('done');
+    await pre.getByRole('button', { name: 'ثبت' }).click();
+    await expect(pre.getByText('ثبت شد')).toBeVisible();
+    const enumRow = page.getByTestId('pt-item-enum.host_discovery');
+    await enumRow.getByLabel('وضعیت').selectOption('in_progress');
+    await enumRow.getByRole('button', { name: 'ثبت' }).click();
+    await expect(enumRow.getByRole('alert')).toContainText('pre-engagement');
     // Findings page is honest while nothing has been assessed.
     await page.goto('/vulnerabilities');
     await expect(page.getByText('یافتهٔ بازی وجود ندارد.')).toBeVisible();
