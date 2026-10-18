@@ -92,7 +92,7 @@ export const NAV: NavItem[] = [
     capabilities: ['assessment.engagements'],
     permission: 'assessments.read',
     phase: 5,
-    implemented: false,
+    implemented: true,
   },
   {
     slug: 'pentest',
@@ -108,7 +108,7 @@ export const NAV: NavItem[] = [
     capabilities: ['assessment.engagements'],
     permission: 'findings.read',
     phase: 5,
-    implemented: false,
+    implemented: true,
   },
   {
     slug: 'threat-intel',

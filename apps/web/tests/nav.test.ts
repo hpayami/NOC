@@ -14,7 +14,7 @@ describe('navigation and i18n', () => {
       for (const l of LOCALES) expect(MESSAGES[l][n.label], `${l}:${n.label}`).toBeTruthy();
     }
   });
-  it('marks only delivered workspaces (Phase ≤ 4) as implemented', () => {
+  it('marks only delivered workspaces (Phase ≤ 5) as implemented', () => {
     expect(
       NAV.filter((n) => n.implemented)
         .map((n) => n.slug)
@@ -29,11 +29,13 @@ describe('navigation and i18n', () => {
       'nids',
       'nips',
       'noc',
+      'red-team',
       'sensors',
       'soc-alerts',
       'topology',
+      'vulnerabilities',
     ]);
-    for (const n of NAV) if (n.implemented) expect(n.phase).toBeLessThanOrEqual(4);
+    for (const n of NAV) if (n.implemented) expect(n.phase).toBeLessThanOrEqual(5);
   });
   it('has identical message keys in fa and en and is Persian-first RTL', () => {
     expect(Object.keys(MESSAGES.en).sort()).toEqual(Object.keys(MESSAGES.fa).sort());

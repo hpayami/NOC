@@ -39,6 +39,13 @@ export const assessmentEngagements = pgTable(
     stopConditions: text('stop_conditions').array().notNull().default([]),
     emergencyContact: text('emergency_contact').notNull(),
     evidenceRetentionDays: integer('evidence_retention_days').notNull().default(365),
+    objective: text('objective').notNull().default(''),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    scopeVersion: integer('scope_version').notNull().default(1),
+    approvedScopeVersion: integer('approved_scope_version'),
+    activatedAt: ts('activated_at'),
+    completedAt: ts('completed_at'),
+    closeReason: text('close_reason'),
     createdAt: ts('created_at').notNull().defaultNow(),
     updatedAt: ts('updated_at').notNull().defaultNow(),
   },
@@ -116,6 +123,8 @@ export const approvals = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     subjectType: approvalSubjectEnum('subject_type').notNull(),
     subjectId: uuid('subject_id').notNull(),
+    /** Version of the subject (e.g. engagement scope) the decision covers; null for unversioned subjects. */
+    subjectVersion: integer('subject_version'),
     approverId: uuid('approver_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),

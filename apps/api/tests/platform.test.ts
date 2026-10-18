@@ -55,6 +55,7 @@ describe('platform endpoints', () => {
       'data.retention',
       'response.actions',
       'nips.policy_plane',
+      'assessment.engagements',
       'detection.rule_registry',
     ]);
     expect(body.capabilities.find((c) => c.id === 'nips.inline_prevention')?.state).toBe(

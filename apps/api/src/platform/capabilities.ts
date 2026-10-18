@@ -120,9 +120,17 @@ export const CAPABILITIES: CapabilityStatus[] = [
   },
   {
     id: 'assessment.engagements',
-    state: 'not_implemented',
+    state: 'available',
     phase: 5,
-    reason: 'Scope enforcement implemented and tested; workers absent',
+    reason:
+      'Authorisation-first engagements with versioned scope, independent approval, window enforcement and per-target scope checks inside the worker',
+  },
+  {
+    id: 'assessment.workers',
+    state: 'degraded',
+    phase: 5,
+    reason:
+      'In-platform workers: host_discovery and service_fingerprint (TCP connect, observed-exposure findings); vulnerability/TLS/web/dependency scanners and detection validation need external integrations',
   },
   {
     id: 'detection.rule_registry',

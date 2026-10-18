@@ -172,4 +172,39 @@ test.describe('Phase 0 shell', () => {
     // No Suricata sensor is registered, so no proposal form is offered — nothing to switch on.
     await expect(page.getByText('سنسور Suricata ثبت نشده است')).toBeVisible();
   });
+
+  test('a red-team operator drafts an authorised engagement and submits it for approval', async ({
+    page,
+  }) => {
+    const redEmail = process.env.E2E_RED_EMAIL;
+    const redPassword = process.env.E2E_RED_PASSWORD;
+    test.skip(!redEmail || !redPassword, 'E2E_RED_EMAIL and E2E_RED_PASSWORD are required');
+    await page.goto('/login');
+    await page.getByLabel('ایمیل').fill(redEmail!);
+    await page.getByLabel('گذرواژه').fill(redPassword!);
+    await page.getByRole('button', { name: 'ورود' }).click();
+    await expect(page).toHaveURL(/\/command-center$/);
+    await page.goto('/red-team');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('تیم قرمز — ارزیابی‌های مجاز');
+    await expect(page.getByText('هیچ ارزیابی‌ای ثبت نشده است.')).toBeVisible();
+    await page.getByLabel('مرجع', { exact: true }).fill('ENG-E2E-1');
+    await page.getByLabel('سازمان مجوزدهنده').fill('Example Holding');
+    await page.getByLabel('مرجع مجوز (قرارداد / تیکت)').fill('CHG-42');
+    await page.getByLabel('هدف').fill('Lab exposure validation from the user VLAN');
+    await page.getByLabel('آدرس‌های شامل').fill('127.0.0.1');
+    await page.getByLabel('شرایط توقف (هر خط یکی)').fill('Any production impact');
+    await page.getByLabel('مخاطب اضطراری').fill('soc-duty@example.test');
+    await page.getByRole('button', { name: 'ثبت پیش‌نویس' }).click();
+    await expect(page).toHaveURL(/\/red-team\/[0-9a-f-]{36}$/);
+    await expect(page.getByTestId('eng-status')).toHaveText('پیش‌نویس');
+    // Nothing runs from a draft: no run form, and submitting only requests approval.
+    await expect(page.getByRole('button', { name: 'صف‌کردن اجرا' })).toHaveCount(0);
+    await page.getByRole('button', { name: '→ در انتظار تأیید' }).click();
+    await expect(page.getByTestId('eng-status')).toHaveText('در انتظار تأیید');
+    // The operator cannot approve their own engagement: no decision form.
+    await expect(page.getByRole('button', { name: 'تأیید', exact: true })).toHaveCount(0);
+    // Findings page is honest while nothing has been assessed.
+    await page.goto('/vulnerabilities');
+    await expect(page.getByText('یافتهٔ بازی وجود ندارد.')).toBeVisible();
+  });
 });

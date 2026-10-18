@@ -9,3 +9,4 @@ export * from './monitoring';
 export * from './discovery';
 export * from './services';
 export * from './ips';
+export * from './assessments';

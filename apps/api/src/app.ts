@@ -16,6 +16,7 @@ import { ingestRoutes } from './routes/ingest';
 import { responseRoutes } from './routes/response';
 import { retentionRoutes } from './routes/retention';
 import { ruleRoutes } from './routes/rules';
+import { assessmentRoutes, findingRoutes } from './routes/assessments';
 import { assetRoutes } from './routes/assets';
 import { authRoutes } from './routes/auth';
 import { collectorRoutes } from './routes/collectors';
@@ -117,6 +118,8 @@ export function createApp(deps: Deps) {
   app.route('/api/v1/incidents', incidentRoutes(deps));
   app.route('/api/v1/response-actions', responseRoutes(deps));
   app.route('/api/v1/ips', ipsRoutes(deps, deps.ips));
+  app.route('/api/v1/assessments', assessmentRoutes(deps));
+  app.route('/api/v1/findings', findingRoutes(deps));
   app.route('/api/v1/retention', retentionRoutes(deps, deps.retention));
   app.route('/api/v1/platform', platformRoutes(deps));
   app.route('/api/v1/audit', auditRoutes(deps));

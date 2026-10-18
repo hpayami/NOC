@@ -137,6 +137,15 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   applied version; `nips.inline_prevention` is reported from enabled **and acknowledged**
   policies only. Web **NIPS Policies** page. See `docs/phase4-progress.md`.
 
+## Phase 5 progress (authorised assessments)
+
+- `/api/v1/assessments`: engagements with an authorisation reference, versioned scope, independent
+  approval (never the operator), activation only inside the authorised window, and automatic
+  expiry. Runs are dry-run by default, limited to connect-level techniques the platform can
+  actually execute, and re-check scope per target inside the worker. `/api/v1/findings`:
+  observed-exposure findings with triage that survives re-observation.
+- Web **Red Team** and **Vulnerability Management** pages. See `docs/phase5-progress.md`.
+
 ## What Phase 0 provides
 
 - **Shared contracts** for every domain entity (users, assets, observations, segments, topology,
@@ -174,7 +183,7 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
 
 ## Roadmap
 
-Phase 1 asset inventory & NOC → Phase 2 NIDS & event pipeline → Phase 3 SOC & IR → Phase 4 NIPS (policy plane delivered) &
+Phase 1 asset inventory & NOC → Phase 2 NIDS & event pipeline → Phase 3 SOC & IR → Phase 4 NIPS (policy plane delivered) → Phase 5 assessments (engagements + connect-level workers delivered) &
 controlled response → Phase 5 authorized assessment → Phase 6 analytics → Phase 7 enterprise
 readiness. Details: `docs/phase-1-plan.md`, `docs/architecture.md`.
 
