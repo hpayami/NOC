@@ -33,6 +33,7 @@ describe('navigation and i18n', () => {
       'red-team',
       'sensors',
       'soc-alerts',
+      'threat-intel',
       'topology',
       'vulnerabilities',
     ]);

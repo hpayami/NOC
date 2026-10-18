@@ -17,6 +17,8 @@ export const IngestReport = z.strictObject({
     .max(20),
   alertsCreated: z.number().int().nonnegative(),
   alertsUpdated: z.number().int().nonnegative(),
+  /** Threat-intel indicator hits recorded for the accepted events (0 when no indicator is loaded). */
+  indicatorMatches: z.number().int().nonnegative(),
   maxEventLagSeconds: z.number().nullable(),
 });
 export type IngestReport = z.infer<typeof IngestReport>;

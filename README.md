@@ -197,6 +197,15 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   entries; known-exploited and CVSS ≥ 9 raise the explained asset risk. Enrichment is by CVE id
   only, never by product name. Capability `vuln.catalog` reports the state.
 
+## Threat intelligence
+
+- Import indicators (platform JSON, CSV, STIX 2.1 single-comparison patterns) under
+  `threat_intel.manage`; identity is (type, canonical value), feeds merge and never revoke by
+  omission. Every accepted event is compared inline with the active indicators (IPs, CIDRs,
+  DNS query, TLS SNI, HTTP host/URL, file hashes — never payload); hits open or bump SOC alerts
+  and are listed on `/threat-intel`. New indicators are also checked against the last 24 h of
+  stored events. Capability `threat_intel.indicators` reports the state.
+
 ## Platform conditions and notifications
 
 - `GET /api/v1/operations/conditions` derives what an operator should act on from real records

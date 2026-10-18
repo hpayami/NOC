@@ -103,3 +103,64 @@ on the incident page, sees it `approved` with no execute button (no `response.ex
 Enforcement integrations (EDR/NAC, firewall, DNS-RPZ, IdP), sensor rule deployment, inline
 prevention (Phase 4; never auto-enabled), evidence store beyond hashed references, user
 directory lookups for approver display.
+
+## Slice 3 — Threat intelligence: indicators and matching (2026-10-18)
+
+**Delivered**
+
+- **Feeds** (`packages/shared/src/rules/threat-intel.ts`, pure): platform JSON
+  (`{ indicators: [...] }`), CSV with a header (`type,value` required; severity, confidence,
+  tags, expires_at, description, source optional; `#` comments; real line numbers in errors) and
+  **STIX 2.1** bundles (indicator objects with a single-comparison pattern on `ipv4-addr`,
+  `ipv6-addr`, `domain-name`, `url` or `file:hashes`; compound patterns and non-STIX pattern
+  types are refused explicitly rather than half-interpreted; `valid_until`, `confidence`,
+  `labels`, `revoked` and the creating identity's name are kept). Values are canonicalised per
+  type (ipaddr normal form, lower-cased domains without trailing dot, scheme-less URLs,
+  lower-case hashes) so one indicator has one identity. A feed that states no severity or
+  confidence leaves what another feed asserted untouched; the last occurrence inside one feed
+  wins, so a revocation after an assertion holds.
+- **Store** (`0019_phase3_threat_intel`): `threat_indicators` unique on (type, value) with
+  source, confidence 0–100, severity, tags, expiry, revoked flag, match counters;
+  `threat_indicator_matches` unique on (indicator, event, field) linking the event, the alert it
+  raised or bumped, the asset and the sensor. Absence from a later feed never revokes; only an
+  explicit `revoked` or `POST /indicators/{id}/revoke` does, and both are audited.
+- **Matching** (`ThreatIntelService`): the event pipeline hands every accepted batch to an
+  in-memory index (exact sets for addresses, hashes and URLs; domains match themselves and
+  every subdomain; CIDRs by containment; 30 s refresh, invalidated on import/revoke). Observables
+  are only what the normalisers keep: src/dst IP, DNS query, TLS SNI, HTTP host and host+URL,
+  file SHA-256/SHA-1/MD5 — never payload. A hit records one match row and raises one SOC alert
+  per (indicator, src, dst) with the indicator's severity and confidence through the normal
+  priority formula; repeats bump the open alert, the same event never counts twice, and the
+  `IngestReport` now carries `indicatorMatches`. On import the new or changed indicators are
+  also compared with the last 24 h of stored events (bounded to 5 000), so "seen yesterday" is
+  reported immediately (`retroMatches`).
+- API `/api/v1/threat-intel`: `GET /stats`, `GET /indicators` (filters, inactive on request),
+  `GET /matches` (site-restricted users see matches attributed to their assets only) under
+  `threat_intel.read`; `POST /indicators/import`, `POST /indicators/{id}/revoke` under
+  `threat_intel.manage`. Capability `threat_intel.indicators`: `not_configured` until an
+  active indicator exists, then `available` with counts, sources and 24 h matches.
+- Web `/threat-intel` is now a real workspace: state summary (or an honest "no indicator
+  imported; events are not compared"), recent matches with a link to the alert, indicator table
+  with type/text filters and inactive toggle, import form and revoke for `threat_intel.manage`.
+
+**Verified**
+
+Shared (6): normalisation per type, platform JSON with de-dup and error lines, CSV quoting and
+real line numbers, STIX patterns (escaped quotes, hash keys, compound/foreign refused),
+observable extraction, matching (exact, subdomain, CIDR v4/v6, once per indicator and field,
+no suffix match on a bare label). API (3): import RBAC (analyst 403, operator 403 on read),
+422 on an unparseable feed, merge semantics across two feeds (updated vs unchanged, confidence
+not clobbered, tags unioned), list filters, stats by type and source, capability reason, audit;
+inline matching of a five-event EVE batch (subdomain DNS, exact IP, CIDR, URL) → 4 matches,
+4 alerts with the right severity/confidence, duplicate batch → nothing, a new sighting bumps
+the open alert; events stored before the feed arrives are matched retroactively (2), an
+unchanged re-import re-reads nothing, revocation stops matching and is reflected in list,
+stats and the explicit-revoke feed path. Totals: shared 125, API 109 (26 files), web 4,
+pytest 8 + agent 7; e2e 5/5 (analyst sees the workspace with no indicators and no import).
+
+**Known limitations**
+
+No scheduled feed fetching (imports are pushed through the API/UI); URL matching needs the
+HTTP host and path the engine logged (no TLS-only URL inference); IPv6 CIDR indicators match
+only IPv6 observables; retroactive matching covers 24 h / 5 000 events; indicator expiry is
+enforced at match time, not by a purge.

@@ -10,6 +10,7 @@ import type { Db } from './db/client';
 import type { Limiter } from './middleware/redis-limiter';
 import type { Metrics } from './platform/metrics';
 import type { RetentionService } from './retention/service';
+import type { ThreatIntelService } from './threat-intel/service';
 import type { TokenService } from './security/tokens';
 
 export interface Deps {
@@ -26,4 +27,5 @@ export interface Deps {
   ml: MlService;
   oidc: OidcService;
   operations: OperationsService;
+  threatIntel: ThreatIntelService;
 }

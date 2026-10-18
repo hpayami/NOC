@@ -157,10 +157,14 @@ test.describe('Phase 0 shell', () => {
     await expect(
       page.getByText('مدیریت کانال‌ها به مجوز notifications.manage نیاز دارد'),
     ).toBeVisible();
-    // Unimplemented workspace shows real capability state, never sample data.
+    // Threat intel: no indicator imported → says so; an analyst cannot import.
     await page.goto('/threat-intel');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('هوش تهدید');
+    await expect(page.getByTestId('ti-stats')).toContainText('هیچ نشانگری وارد نشده است');
+    await expect(page.getByRole('button', { name: 'import' })).toHaveCount(0);
+    // Unimplemented workspace shows real capability state, never sample data.
+    await page.goto('/pentest');
     await expect(page.getByText('این بخش هنوز عملیاتی نیست')).toBeVisible();
-    await expect(page.getByText('events.pipeline')).toBeVisible();
     // Analysts cannot administer users: forbidden page, not a crash.
     await page.goto('/administration');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('دسترسی مجاز نیست');

@@ -19,7 +19,7 @@ import { rateLimit } from '../middleware/rate-limit';
  */
 export function ingestRoutes(deps: Deps) {
   const { db, limiter } = deps;
-  const pipeline = new EventPipeline(db, deps.metrics, deps.bus);
+  const pipeline = new EventPipeline(db, deps.metrics, deps.bus, deps.threatIntel);
   const app = new OpenAPIHono<AppEnv>();
 
   const resolveSource = async (c: Context<AppEnv>, expectedKind: string): Promise<IngestSource> => {

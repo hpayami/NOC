@@ -17,6 +17,7 @@ import { alerts, assets, securityEvents, sensors } from '../db/schema';
 import type { Metrics } from '../platform/metrics';
 import type { AlertBusLike } from './bus';
 import { resolveRuleIds } from '../rules/service';
+import type { ThreatIntelService } from '../threat-intel/service';
 
 export interface IngestSource {
   sensorId: string;
@@ -76,6 +77,7 @@ export class EventPipeline {
     private readonly db: Db,
     private readonly metrics: Metrics,
     private readonly bus: AlertBusLike,
+    private readonly threatIntel?: Pick<ThreatIntelService, 'matchEvents'>,
   ) {}
 
   async ingestEve(body: string, source: IngestSource): Promise<IngestReport> {
@@ -110,6 +112,7 @@ export class EventPipeline {
       rejections: [],
       alertsCreated: 0,
       alertsUpdated: 0,
+      indicatorMatches: 0,
       maxEventLagSeconds: null,
     };
     const reject = (index: number, reason: string) => {
@@ -301,6 +304,28 @@ export class EventPipeline {
           this.metrics.alertsCreated.inc({ severity: e.severity });
         }
       }
+    }
+    // Threat-intel: every accepted event is compared with the active indicator index; hits raise
+    // or bump their own alerts and are recorded per (indicator, event, field).
+    if (this.threatIntel && fresh.length) {
+      const ti = await this.threatIntel.matchEvents(
+        fresh.map((e) => ({
+          eventId: e.eventId,
+          eventTime: new Date(e.eventTime),
+          sourceProduct: e.sourceProduct,
+          sourceSensorId: e.sourceSensorId,
+          srcIp: e.srcIp,
+          dstIp: e.dstIp,
+          srcAssetId: e.srcAssetId,
+          dstAssetId: e.dstAssetId,
+          severity: e.severity,
+          engine: e.engine,
+        })),
+        ingestTime,
+      );
+      report.indicatorMatches = ti.matches;
+      report.alertsCreated += ti.alertsCreated;
+      report.alertsUpdated += ti.alertsUpdated;
     }
     return report;
   }

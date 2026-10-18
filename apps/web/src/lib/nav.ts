@@ -113,10 +113,10 @@ export const NAV: NavItem[] = [
   {
     slug: 'threat-intel',
     label: 'nav.threat_intel',
-    capabilities: ['events.pipeline'],
+    capabilities: ['threat_intel.indicators', 'events.pipeline'],
     permission: 'threat_intel.read',
     phase: 3,
-    implemented: false,
+    implemented: true,
   },
   {
     slug: 'detection-engineering',

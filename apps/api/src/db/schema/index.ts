@@ -4,6 +4,7 @@ export * from './assets';
 export * from './sensors';
 export * from './vulnerabilities';
 export * from './operations';
+export * from './threat-intel';
 export * from './secops';
 export * from './governance';
 export * from './audit';

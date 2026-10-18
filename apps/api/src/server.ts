@@ -15,6 +15,7 @@ import { syncRbacCatalog } from './platform/seed';
 import { IpsService, IpsWatchdog } from './ips/service';
 import { MlService } from './ml/service';
 import { NotificationScheduler, OperationsService } from './operations/service';
+import { ThreatIntelService } from './threat-intel/service';
 import { RetentionScheduler, RetentionService } from './retention/service';
 import { TokenService } from './security/tokens';
 
@@ -41,6 +42,7 @@ async function main() {
   const audit = new AuditService(handle.db);
   const retention = new RetentionService(handle.db, audit);
   await retention.ensureDefaults();
+  const bus = env.REDIS_URL ? new RedisAlertBus(env.REDIS_URL, logger) : new AlertBus();
   const ml = new MlService(handle.db, audit, logger, {
     url: env.ANALYSIS_URL,
     token: env.ANALYSIS_INTERNAL_TOKEN ?? null,
@@ -53,7 +55,7 @@ async function main() {
     audit,
     limiter: env.REDIS_URL ? new RedisRateLimiter(env.REDIS_URL, logger) : new RateLimiter(),
     metrics: createMetrics(),
-    bus: env.REDIS_URL ? new RedisAlertBus(env.REDIS_URL, logger) : new AlertBus(),
+    bus,
     retention,
     ips: new IpsService(handle.db, audit),
     ml,
@@ -63,6 +65,7 @@ async function main() {
       remindHours: env.NOTIFICATIONS_REMIND_HOURS,
       logger,
     }),
+    threatIntel: new ThreatIntelService(handle.db, audit, bus),
   };
   const app = createApp(deps);
 

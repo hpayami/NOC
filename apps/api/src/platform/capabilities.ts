@@ -154,6 +154,13 @@ export const CAPABILITIES: CapabilityStatus[] = [
       'No vulnerability catalogue imported; findings carry only the CVEs their source supplied (import NVD 2.0 / CISA KEV via /api/v1/vulnerabilities/import)',
   },
   {
+    id: 'threat_intel.indicators',
+    state: 'not_configured',
+    phase: 3,
+    reason:
+      'No active indicator imported; events are stored but not compared with threat intelligence',
+  },
+  {
     id: 'ops.notifications',
     state: 'not_configured',
     phase: 7,
@@ -184,6 +191,13 @@ export function resolveCapabilities(input: {
   sso?: { enabled: boolean; issuer: string | null; jit: boolean };
   vulnCatalog?: { total: number; knownExploited: number; lastImportAt: string | null };
   notifications?: { enabled: number; failed: number };
+  threatIntel?: {
+    active: number;
+    expired: number;
+    sources: number;
+    matches24h: number;
+    lastImportAt: string | null;
+  };
   now: Date;
 }): CapabilityStatus[] {
   const engines: Record<string, { sensors: SensorState; label: string }> = {
@@ -206,6 +220,15 @@ export function resolveCapabilities(input: {
         ...cap,
         state: n.failed > 0 ? 'degraded' : 'available',
         reason: `${n.enabled} enabled webhook channel(s); ${n.failed} with a failed last delivery. Signed (HMAC-SHA256), de-duplicated per condition, reminders after the quiet period`,
+      };
+    }
+    if (cap.id === 'threat_intel.indicators') {
+      const t = input.threatIntel;
+      if (!t || t.active === 0) return cap;
+      return {
+        ...cap,
+        state: 'available',
+        reason: `${t.active} active indicator(s) from ${t.sources} source(s), ${t.expired} expired; last import ${t.lastImportAt ?? 'unknown'}; ${t.matches24h} match(es) in 24 h. Matched inline on ingest against IPs, DNS, SNI, HTTP host/URL and file hashes the sensors reported`,
       };
     }
     if (cap.id === 'vuln.catalog') {
