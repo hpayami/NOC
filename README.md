@@ -173,6 +173,14 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   and a cross-instance alert stream bus (both degrade to per-instance behaviour if Redis is down).
   See `docs/phase7-progress.md` and `docs/deployment-profiles.md`.
 
+## Asset dependency graph and risk
+
+- `GET /api/v1/assets/graph` draws edges only from recorded topology relationships and traffic
+  the sensors actually saw; `GET /api/v1/assets/{id}/risk` explains each asset's risk from open
+  ports (with source), MITRE ATT&CK techniques split into _observed in alerts_ vs _exposed by an
+  open service_, findings with CVE/CWE and recent alerts (each behind its permission). An
+  unmonitored asset without evidence is reported `unknown`, never safe. Web page `/assets/graph`.
+
 ## Phase 2 rule deployment
 
 - Validated rules are deployed by a separate permission (`detection_rules.deploy`, SoD with

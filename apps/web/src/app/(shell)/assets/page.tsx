@@ -50,9 +50,17 @@ export default async function AssetsPage({
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">{t('assets.title')}</h1>
-        <p className="mt-1 text-sm text-muted">{t('assets.subtitle')}</p>
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">{t('assets.title')}</h1>
+          <p className="mt-1 text-sm text-muted">{t('assets.subtitle')}</p>
+        </div>
+        <a
+          href="/assets/graph"
+          className="rounded-md border border-border px-3 py-1.5 text-sm text-muted hover:text-fg"
+        >
+          {t('graph.link')}
+        </a>
       </header>
 
       <ul className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">

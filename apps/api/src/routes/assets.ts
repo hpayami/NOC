@@ -6,10 +6,13 @@ import {
   Asset,
   AssetCoverageSummary,
   AssetDetail,
+  AssetGraph,
+  AssetGraphQuery,
   AssetInterface,
   AssetListQuery,
   AssetObservation,
   AssetPatchRequest,
+  AssetRiskProfile,
   AssetServiceRecord,
   AssetTimelineEntry,
   AssuranceStateValues,
@@ -19,6 +22,7 @@ import {
   PageQuery,
 } from '@noc/shared';
 import type { Deps } from '../app-deps';
+import { assetGraph, assetRiskProfile } from '../assets/graph';
 import { AssetService } from '../assets/service';
 import {
   assetInterfaces,
@@ -40,7 +44,7 @@ const common = { 401: err('Unauthenticated'), 403: err('Forbidden') };
 type AssetRow = typeof assets.$inferSelect;
 type IfaceRow = typeof assetInterfaces.$inferSelect;
 
-function toPublicInterface(r: IfaceRow) {
+export function toPublicInterface(r: IfaceRow) {
   return AssetInterface.parse({
     id: r.id,
     assetId: r.assetId,
@@ -55,7 +59,7 @@ function toPublicInterface(r: IfaceRow) {
 }
 
 /** `serialNumber` is only revealed to holders of assets.read_sensitive. */
-function toPublicAsset(r: AssetRow, ifaces: IfaceRow[], sensitive: boolean) {
+export function toPublicAsset(r: AssetRow, ifaces: IfaceRow[], sensitive: boolean) {
   return Asset.parse({
     id: r.id,
     hostname: r.hostname,
@@ -304,6 +308,68 @@ export function assetRoutes(deps: Deps) {
   );
 
   const idParam = z.object({ id: z.uuid() });
+
+  // ---- GET /graph (evidence-only dependency graph) ------------------------------------------
+  app.openapi(
+    createRoute({
+      method: 'get',
+      path: '/graph',
+      tags: ['assets'],
+      middleware: [requirePermission('assets.read')] as const,
+      security: [{ bearerAuth: [] }],
+      request: { query: AssetGraphQuery },
+      responses: {
+        200: {
+          description:
+            'Assets in scope as nodes; edges only from recorded topology relationships and traffic sensors saw in the window. Nothing inferred.',
+          content: { 'application/json': { schema: AssetGraph } },
+        },
+        ...common,
+      },
+    }),
+    async (c) => {
+      const q = c.req.valid('query');
+      return c.json(
+        AssetGraph.parse(
+          await assetGraph(db, siteScope(c.get('principal')), { hours: q.hours, limit: q.limit }),
+        ),
+        200,
+      );
+    },
+  );
+
+  // ---- GET /{id}/risk ----------------------------------------------------------------------
+  app.openapi(
+    createRoute({
+      method: 'get',
+      path: '/{id}/risk',
+      tags: ['assets'],
+      middleware: [requirePermission('assets.read')] as const,
+      security: [{ bearerAuth: [] }],
+      request: { params: idParam },
+      responses: {
+        200: {
+          description:
+            'Risk profile: open ports with their source, ATT&CK techniques observed (alerts) vs exposed (open services), findings and alerts behind their own permissions, neighbours with evidence, and an explained risk level',
+          content: { 'application/json': { schema: AssetRiskProfile } },
+        },
+        404: err('Not found'),
+        ...common,
+      },
+    }),
+    async (c) => {
+      const p = c.get('principal')!;
+      return c.json(
+        AssetRiskProfile.parse(
+          await assetRiskProfile(db, c.req.valid('param').id, {
+            sites: siteScope(p),
+            permissions: p.permissions,
+          }),
+        ),
+        200,
+      );
+    },
+  );
 
   // ---- GET /{id} ---------------------------------------------------------------------------
   app.openapi(

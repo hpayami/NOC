@@ -144,6 +144,10 @@ test.describe('Phase 0 shell', () => {
     await expect(page.getByTestId('response-status')).toHaveText('تأییدشده');
     await expect(page.getByRole('button', { name: 'اجرا', exact: true })).toHaveCount(0);
     await expect(page.getByText('اقدام پاسخ').first()).toBeVisible();
+    // Asset dependency graph: no assets → honest empty state, never a demo topology.
+    await page.goto('/assets/graph');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('گراف وابستگی دارایی‌ها');
+    await expect(page.getByText('دارایی‌ای در محدودهٔ شما ثبت نشده است.')).toBeVisible();
     // Unimplemented workspace shows real capability state, never sample data.
     await page.goto('/threat-intel');
     await expect(page.getByText('این بخش هنوز عملیاتی نیست')).toBeVisible();

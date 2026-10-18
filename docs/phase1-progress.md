@@ -150,3 +150,49 @@ API 65, web 4; e2e covers the Sensors page.
 Flow-derived inferred edges (needs the Phase 2 flow collector), threshold alerts/escalation
 (Phase 2 alert queue), discovery/maintenance UI forms, retention jobs, the agent binary itself
 (the API contract and parsers are in place; the collector process is a separate deliverable).
+
+## Slice — Asset dependency graph and ATT&CK-based risk profile (2026-10-18)
+
+**Delivered**
+
+- `GET /api/v1/assets/graph?hours=&limit=` (`assets.read`, site-scoped): nodes are the assets in
+  scope; **edges exist only with evidence** — a recorded `topology_relationships` row between two
+  nodes, or traffic the sensors saw between them inside the window (`security_events`, grouped
+  by src→dst asset with event count and destination ports). Nothing is inferred from addresses
+  or segment membership; an asset with no evidence is an isolated node. Each node carries open
+  finding/alert/port counts and an explained risk.
+- `GET /api/v1/assets/{id}/risk` (`assets.read`, 404 outside scope): open ports with their
+  **source** (endpoint-agent inventory, assessment/discovery observations; latest wins per port)
+  and the risky-service catalogue entry when there is one; **MITRE ATT&CK techniques split by
+  provenance** — `alert` (a detection against the asset, technique from the rule's metadata) vs
+  `exposure` (what an open service makes available, e.g. tcp/445 → T1021.002/T1210) — so an
+  exposure is never read as an attack seen; findings with CVE/CWE (needs `findings.read`) and
+  recent alerts (needs `alerts.read`), each stated as withheld otherwise; neighbours with the
+  evidence kind and direction; risk level/score/confidence with a line-by-line basis.
+- Shared rules (`packages/shared/src/rules/attack.ts`): curated technique catalogue (unknown ids
+  are reported with `name: null`, never guessed), exposure mapping per port, and
+  `assessAssetRisk` — deterministic, monotone in findings/alerts/risky exposures, amplified by
+  asset criticality, confidence from telemetry state, and the honesty rule: an unmonitored asset
+  with no evidence is **`unknown`, never safe**.
+- Web **/assets/graph**: SVG force layout (no dependency), nodes coloured by risk level, solid
+  topology edges vs dashed traffic edges (width by event count), search/risk/site filters; click
+  a node → risk panel fetched through a BFF proxy (ports, techniques, findings, alerts,
+  neighbours clickable). Linked from the inventory page.
+
+**Verified**
+
+Shared: catalogue lookup, exposure mapping, unknown-for-unmonitored, monotone scoring with
+explained basis, criticality amplification, confidence under degraded telemetry. API: three
+assets, one recorded dependency, three sensor events → exactly one topology edge and two traffic
+edges with direction, counts and ports; the isolated asset has no edge and risk `unknown`; the
+database host's profile lists ports with source and service, T1046 from the alert's rule,
+T1021.002/T1213 as exposure, the finding with its CVE, alerts with techniques, both neighbour
+kinds; observation-reported ports appear with their source; a role without `alerts.read` gets
+alerts withheld and the basis says so; 404 outside scope. e2e: graph page shows an honest empty
+state. Totals: shared 109, API 101, web 4, pytest 8; e2e 5/5.
+
+**Not delivered**
+
+Service-dependency inference from flows (a dependency is only recorded when a collector states
+it), CVE enrichment from vulnerability databases (findings carry the CVEs their source supplied),
+sub-technique coverage beyond the curated catalogue.
