@@ -52,3 +52,13 @@ replay (state consumed on first use, including failed attempts), token substitut
 clients (audience and `azp` checks), IdP account takeover inheriting a local admin (no e-mail
 linking by default), privilege drift (roles follow the claim; a change invalidates outstanding
 access tokens), IdP outage (reported as 503 and in `auth.sso` capability; local login unaffected).
+
+## Site scoping (Phase 7)
+
+Authorization has two dimensions: _what_ (permissions via roles) and _where_ (site grants).
+`users.all_sites = false` restricts a principal to the keys in `user_site_grants`; the predicate
+is applied inside the API queries for assets (through the segment), segments, sensors, alerts
+(through the asset) and events (through either asset). Decisions: out-of-scope ids answer 404 so
+existence does not leak; unattributable rows are hidden from restricted principals (fail closed);
+an empty grant set means an empty world; grant changes invalidate outstanding tokens. Not yet
+scoped: incidents, response actions, assessments, rules, ML results.

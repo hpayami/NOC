@@ -6,7 +6,7 @@ import type { Env } from './config/env';
 import type { IpsService } from './ips/service';
 import type { MlService } from './ml/service';
 import type { Db } from './db/client';
-import type { RateLimiter } from './middleware/rate-limit';
+import type { Limiter } from './middleware/redis-limiter';
 import type { Metrics } from './platform/metrics';
 import type { RetentionService } from './retention/service';
 import type { TokenService } from './security/tokens';
@@ -17,7 +17,7 @@ export interface Deps {
   logger: Logger;
   tokens: TokenService;
   audit: AuditService;
-  limiter: RateLimiter;
+  limiter: Limiter;
   metrics: Metrics;
   bus: AlertBus;
   retention: RetentionService;

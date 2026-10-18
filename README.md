@@ -160,7 +160,11 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   RS256 ID tokens verified locally against the IdP's JWKS (issuer, audience, expiry, nonce),
   JIT provisioning with a group → role map, roles re-synced on login, and **no e-mail auto-link**
   to local accounts unless explicitly enabled. Enabled by setting `OIDC_ISSUER`, `OIDC_CLIENT_ID`
-  and `OIDC_REDIRECT_URI`; the login page then offers SSO. See `docs/phase7-progress.md`.
+  and `OIDC_REDIRECT_URI`; the login page then offers SSO.
+- Site scoping: per-user site grants enforced inside asset, segment, sensor, alert and event
+  queries (404 for out-of-scope ids, unattributable rows hidden, empty grants = empty world).
+  Shared rate limiting across API instances with `REDIS_URL` (degrades to per-instance limits if
+  Redis is down). See `docs/phase7-progress.md` and `docs/deployment-profiles.md`.
 
 ## What Phase 0 provides
 
@@ -199,7 +203,7 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
 
 ## Roadmap
 
-Phase 1 asset inventory & NOC → Phase 2 NIDS & event pipeline → Phase 3 SOC & IR → Phase 4 NIPS (policy plane delivered) → Phase 5 assessments (engagements + connect-level workers delivered) → Phase 6 ML (advisory baseline delivered) → Phase 7 enterprise (SSO delivered; tenant scoping and HA next) &
+Phase 1 asset inventory & NOC → Phase 2 NIDS & event pipeline → Phase 3 SOC & IR → Phase 4 NIPS (policy plane delivered) → Phase 5 assessments (engagements + connect-level workers delivered) → Phase 6 ML (advisory baseline delivered) → Phase 7 enterprise (SSO, site scoping, shared rate limiting delivered) &
 controlled response → Phase 5 authorized assessment → Phase 6 analytics → Phase 7 enterprise
 readiness. Details: `docs/phase-1-plan.md`, `docs/architecture.md`.
 

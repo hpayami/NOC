@@ -30,3 +30,16 @@ redundant links, maintenance and rollback procedure.
 overhead, replication, backup capacity, query concurrency, recovery objectives.
 
 Never report "zero packet loss" or "complete visibility" without counters from the sensor itself.
+
+## Running more than one API instance (Phase 7)
+
+- Set `REDIS_URL` on every instance so rate limits are shared (token bucket in Redis; the
+  limiter degrades to per-instance limits and logs if Redis is unreachable).
+- Sessions need nothing shared: access tokens are stateless JWTs and refresh-token families live
+  in PostgreSQL.
+- OIDC login state lives in PostgreSQL (`oidc_states`), so the callback may land on any instance.
+- The SSE alert stream (`/api/v1/alerts/stream`) is fed by an in-process bus: route each browser
+  consistently to one instance (sticky sessions on `/stream/alerts`) or accept that an instance
+  only pushes the alerts it ingested itself. Polling clients are unaffected.
+- Schedulers (monitoring checks, retention, IPS expiry) are idempotent but run on every instance;
+  set `MONITORING_SCHEDULER_ENABLED=false` / `RETENTION_ENABLED=false` on all but one.

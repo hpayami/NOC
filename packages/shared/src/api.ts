@@ -36,6 +36,8 @@ export const SessionUser = z.strictObject({
   displayName: z.string(),
   roles: z.array(RoleKeySchema),
   permissions: z.array(PermissionSchema),
+  /** null = all sites; otherwise the site keys this session may see (enforced server-side). */
+  sites: z.array(z.string().max(32)).nullable(),
 });
 export type SessionUser = z.infer<typeof SessionUser>;
 

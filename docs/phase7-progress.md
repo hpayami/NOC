@@ -52,3 +52,46 @@ Totals: shared 98, API 90, web 4, pytest 8; e2e 5/5 (SSO button absent when not 
 No OIDC logout (RP-initiated), no IdP-initiated session revocation (back-channel logout), no
 MFA step-up for local accounts, no admin UI to link a local account to an SSO identity (the
 409 path is deliberate and manual), no tenant/site scoping yet.
+
+## Slice 2 — Site scoping and multi-instance rate limiting (2026-10-18)
+
+**Delivered**
+
+- **Site scoping as an authorization boundary.** `sites` catalogue (`GET/POST /api/v1/sites`;
+  create needs `network.manage`), `user_site_grants` and `users.all_sites`. A principal carries
+  `sites: null` (unrestricted) or the granted keys; `SessionUser` exposes it. Administrators set
+  grants with `PUT /api/v1/users/{id}/sites` (`users.manage`, not on themselves, unknown keys
+  refused, audited `users.set_sites`); the change bumps `token_version` and revokes refresh
+  tokens, so it applies on the next request. Enforcement is in the queries, not the UI:
+  `apps/api/src/middleware/scope.ts` adds a predicate to asset list/detail (via the asset's
+  segment site), network segments, sensors (`sensors.site`), alert list/detail (via the alert's
+  asset) and the event list (via src/dst asset). Out-of-scope detail requests return **404**, not
+  403, so existence is not leaked; rows that cannot be attributed to a site (asset without a
+  segment, alert or event without an asset, sensor without a site) are **hidden from restricted
+  principals** — fail closed. A restricted user with no grants sees nothing.
+- **Shared rate limiting.** `RedisRateLimiter` (`REDIS_URL`) runs the token bucket atomically in
+  Redis via a Lua script so every API instance draws from the same bucket; the client is a
+  dependency-free RESP2 implementation (`MiniRedis`). When Redis is unreachable the limiter
+  **degrades to the per-instance bucket** and logs once per outage — it never fails open
+  silently and never blocks all traffic because the cache is down. Unset `REDIS_URL` keeps the
+  in-process limiter (single instance).
+- Schema (`0012_phase7_site_scoping_redis`): `sites`, `user_site_grants`, `users.all_sites`.
+
+**Verified**
+
+API: site-scoping integration test — two sites with a segment, asset and sensor each, an
+orphan asset, a site-less sensor, three alerts (DC asset, branch asset, no asset); unrestricted
+user sees all; grant to `dc1` invalidates the session, then assets/segments/sensors/alerts/events
+are filtered and out-of-scope or unattributable ids 404; restricted with no grants sees nothing;
+back to unrestricted; unknown site key → 400; audit entries. Redis limiter test against a real
+`redis-server` spawned on a free port — two limiter instances share one bucket (3 allowed, 4th
+denied with retry-after), other keys unaffected, unreachable Redis degrades to per-instance
+limits and still limits. Totals: shared 98, API 93, web 4, pytest 8; e2e 5/5.
+
+**Known limitations**
+
+Incidents, response actions, assessments, detection rules and ML results are not site-scoped
+(they reference scoped objects but are visible to any holder of their permission); the SSE alert
+stream is per-instance (a multi-instance deployment needs sticky sessions for `/stream/alerts`
+or a shared bus — documented in the deployment profiles); writes (observations, sensor
+registration) are not yet refused for sites outside the actor's grants.

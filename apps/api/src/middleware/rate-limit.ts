@@ -53,7 +53,15 @@ export class RateLimiter {
 }
 
 export function rateLimit(
-  limiter: RateLimiter,
+  limiter: {
+    take: (
+      key: string,
+      capacity: number,
+      refillPerSecond: number,
+    ) =>
+      | { allowed: boolean; retryAfterSeconds: number }
+      | Promise<{ allowed: boolean; retryAfterSeconds: number }>;
+  },
   opts: {
     name: string;
     capacity: number;
@@ -69,7 +77,7 @@ export function rateLimit(
         : opts.keyBy === 'sensor'
           ? (c.get('sensor')?.sensorId ?? '-')
           : '';
-    const { allowed, retryAfterSeconds } = limiter.take(
+    const { allowed, retryAfterSeconds } = await limiter.take(
       `${opts.name}:${ip}:${user}`,
       opts.capacity,
       opts.refillPerSecond,

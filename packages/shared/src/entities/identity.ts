@@ -13,6 +13,8 @@ export const User = z.strictObject({
   mfaEnrolled: z.boolean(),
   /** 'local' password accounts or 'oidc' single sign-on; SSO accounts cannot log in with a password. */
   authProvider: z.enum(['local', 'oidc']),
+  allSites: z.boolean(),
+  sites: z.array(z.string().max(32)),
   lastLoginAt: Timestamp.nullable(),
   createdAt: Timestamp,
 });

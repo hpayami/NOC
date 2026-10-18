@@ -11,11 +11,12 @@ import {
   RoleKeySchema,
   User,
   UserListResponse,
+  UserSitesRequest,
   UserStatus,
   type RoleKey,
 } from '@noc/shared';
 import type { Deps } from '../app-deps';
-import { refreshTokens, userRoles, users } from '../db/schema';
+import { refreshTokens, sites, userRoles, userSiteGrants, users } from '../db/schema';
 import { requirePermission } from '../middleware/auth';
 import type { AppEnv } from '../middleware/context';
 import { hashPassword } from '../security/password';
@@ -33,6 +34,10 @@ export function userRoutes(deps: Deps) {
     if (ids.length === 0) return [];
     const rows = await db.select().from(users).where(inArray(users.id, ids));
     const roleRows = await db.select().from(userRoles).where(inArray(userRoles.userId, ids));
+    const siteRows = await db
+      .select()
+      .from(userSiteGrants)
+      .where(inArray(userSiteGrants.userId, ids));
     return rows.map((u) =>
       User.parse({
         id: u.id,
@@ -42,6 +47,8 @@ export function userRoutes(deps: Deps) {
         roles: roleRows.filter((r) => r.userId === u.id).map((r) => r.roleKey),
         mfaEnrolled: u.mfaEnrolled,
         authProvider: u.authProvider,
+        allSites: u.allSites,
+        sites: siteRows.filter((r) => r.userId === u.id).map((r) => r.siteKey),
         lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
         createdAt: u.createdAt.toISOString(),
       }),
@@ -274,6 +281,92 @@ export function userRoutes(deps: Deps) {
     const [pub] = await toPublic([id]);
     return c.json(pub!, 200);
   });
+
+  // ---- PUT /{id}/sites: site grants (fail closed when restricted with no grants) --------------
+  app.openapi(
+    createRoute({
+      method: 'put',
+      path: '/{id}/sites',
+      tags: ['users'],
+      middleware: [requirePermission('users.manage')] as const,
+      security: [{ bearerAuth: [] }],
+      request: {
+        params: z.object({ id: z.uuid() }),
+        body: { content: { 'application/json': { schema: UserSitesRequest } }, required: true },
+      },
+      responses: {
+        200: {
+          description: 'Updated; outstanding tokens invalidated',
+          content: { 'application/json': { schema: User } },
+        },
+        400: err('Validation / unknown site'),
+        401: err('Unauthenticated'),
+        403: err('Forbidden'),
+        404: err('Not found'),
+      },
+    }),
+    async (c) => {
+      const { id } = c.req.valid('param');
+      const body = c.req.valid('json');
+      const actor = c.get('principal')!;
+      if (id === actor.userId)
+        throw new HTTPException(403, { message: 'Cannot change your own site scope' });
+      const keys = [...new Set(body.sites)];
+      if (keys.length) {
+        const known = await db
+          .select({ key: sites.key })
+          .from(sites)
+          .where(inArray(sites.key, keys));
+        const missing = keys.filter((k) => !known.some((s) => s.key === k));
+        if (missing.length)
+          throw new HTTPException(400, { message: `Unknown site(s): ${missing.join(', ')}` });
+      }
+      await db.transaction(async (tx) => {
+        const [u] = await tx
+          .select({ id: users.id, allSites: users.allSites })
+          .from(users)
+          .where(eq(users.id, id))
+          .limit(1);
+        if (!u) throw new HTTPException(404, { message: 'User not found' });
+        await tx.delete(userSiteGrants).where(eq(userSiteGrants.userId, id));
+        if (!body.allSites && keys.length)
+          await tx
+            .insert(userSiteGrants)
+            .values(keys.map((siteKey) => ({ userId: id, siteKey, grantedBy: actor.userId })));
+        // Scope changes take effect immediately: invalidate outstanding tokens.
+        await tx
+          .update(users)
+          .set({
+            allSites: body.allSites,
+            tokenVersion: sql`${users.tokenVersion} + 1`,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, id));
+        await tx
+          .update(refreshTokens)
+          .set({ revokedAt: new Date() })
+          .where(and(eq(refreshTokens.userId, id), isNull(refreshTokens.revokedAt)));
+        await audit.record(
+          {
+            actorId: actor.userId,
+            actorLabel: actor.email,
+            action: 'users.set_sites',
+            outcome: 'success',
+            targetType: 'user',
+            targetId: id,
+            requestId: c.get('requestId'),
+            sourceIp: c.get('clientIp'),
+            metadata: {
+              from: { allSites: u.allSites },
+              to: { allSites: body.allSites, sites: keys },
+            },
+          },
+          tx,
+        );
+      });
+      return c.json((await toPublic([id]))[0]!, 200);
+    },
+  );
 
   return app;
 }

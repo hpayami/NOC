@@ -25,6 +25,7 @@ import { discoveryRoutes } from './routes/discovery';
 import { assetMetricRoutes, monitoringRoutes } from './routes/monitoring';
 import { networkRoutes } from './routes/network';
 import { sensorRoutes } from './routes/sensors';
+import { siteRoutes } from './routes/sites';
 import { auditRoutes, healthRoutes, platformRoutes } from './routes/platform';
 import { roleRoutes, userRoutes } from './routes/users';
 
@@ -109,6 +110,7 @@ export function createApp(deps: Deps) {
   app.route('/api/v1/network', networkRoutes(deps));
   app.route('/api/v1/monitoring', monitoringRoutes(deps));
   app.route('/api/v1/sensors', sensorRoutes(deps));
+  app.route('/api/v1/sites', siteRoutes(deps));
   app.route('/api/v1/discovery', discoveryRoutes(deps).app);
   app.route('/api/v1/collectors', collectorRoutes(deps));
   app.route('/api/v1/agents', agentRoutes(deps).app);

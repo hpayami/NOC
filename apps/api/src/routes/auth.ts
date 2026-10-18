@@ -83,6 +83,7 @@ export function authRoutes(deps: Deps) {
       displayName: p.displayName,
       roles: p.roles,
       permissions: [...p.permissions],
+      sites: p.sites,
     });
 
   // ---- POST /login -------------------------------------------------------------------------

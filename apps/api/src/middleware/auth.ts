@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { eq } from 'drizzle-orm';
 import type { Permission, RoleKey } from '@noc/shared';
 import type { Db } from '../db/client';
-import { rolePermissions, sensors, userRoles, users } from '../db/schema';
+import { rolePermissions, sensors, userRoles, userSiteGrants, users } from '../db/schema';
 import type { TokenService } from '../security/tokens';
 import type { AppEnv, Principal } from './context';
 import { hashesMatch } from '../agents/service';
@@ -29,6 +29,7 @@ export async function loadPrincipal(
       displayName: users.displayName,
       status: users.status,
       tokenVersion: users.tokenVersion,
+      allSites: users.allSites,
     })
     .from(users)
     .where(eq(users.id, userId))
@@ -47,12 +48,21 @@ export async function loadPrincipal(
     roles.add(r.roleKey as RoleKey);
     if (r.permissionKey) permissions.add(r.permissionKey as Permission);
   }
+  const sites = u.allSites
+    ? null
+    : (
+        await db
+          .select({ k: userSiteGrants.siteKey })
+          .from(userSiteGrants)
+          .where(eq(userSiteGrants.userId, userId))
+      ).map((r) => r.k);
   return {
     userId: u.id,
     email: u.email,
     displayName: u.displayName,
     roles: [...roles],
     permissions,
+    sites,
     tokenJti: jti,
   };
 }

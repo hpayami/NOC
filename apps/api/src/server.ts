@@ -6,6 +6,7 @@ import { OidcService, oidcConfigFromEnv } from './auth/oidc';
 import { loadEnv } from './config/env';
 import { createDb } from './db/client';
 import { RateLimiter } from './middleware/rate-limit';
+import { RedisRateLimiter } from './middleware/redis-limiter';
 import { AlertBus } from './events/bus';
 import { AvailabilityService, MonitoringScheduler } from './monitoring/service';
 import { createMetrics } from './platform/metrics';
@@ -44,7 +45,7 @@ async function main() {
     logger,
     tokens: new TokenService(env.AUTH_JWT_SECRET, env.AUTH_ACCESS_TTL_SECONDS),
     audit,
-    limiter: new RateLimiter(),
+    limiter: env.REDIS_URL ? new RedisRateLimiter(env.REDIS_URL, logger) : new RateLimiter(),
     metrics: createMetrics(),
     bus: new AlertBus(),
     retention,

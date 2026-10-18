@@ -11,6 +11,8 @@ export interface Principal {
   displayName: string;
   roles: RoleKey[];
   permissions: Set<Permission>;
+  /** null = unrestricted; otherwise the only site keys this principal may see. */
+  sites: string[] | null;
   tokenJti: string;
 }
 

@@ -10,6 +10,7 @@ import {
 import type { Deps } from '../app-deps';
 import { assets, networkSegments, topologyRelationships } from '../db/schema';
 import { requirePermission } from '../middleware/auth';
+import { segmentSiteCondition, siteScope } from '../middleware/scope';
 import type { AppEnv } from '../middleware/context';
 
 const err = (d: string) => ({
@@ -53,7 +54,12 @@ export function networkRoutes(deps: Deps) {
     async (c) =>
       c.json(
         (
-          await db.select().from(networkSegments).orderBy(asc(networkSegments.name)).limit(1000)
+          await db
+            .select()
+            .from(networkSegments)
+            .where(segmentSiteCondition(siteScope(c.get('principal'))))
+            .orderBy(asc(networkSegments.name))
+            .limit(1000)
         ).map(toSegment),
         200,
       ),

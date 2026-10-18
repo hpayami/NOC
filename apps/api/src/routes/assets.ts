@@ -28,6 +28,7 @@ import {
   auditEvents,
 } from '../db/schema';
 import { requirePermission } from '../middleware/auth';
+import { assetSiteCondition, siteScope } from '../middleware/scope';
 import type { AppEnv } from '../middleware/context';
 import { rateLimit } from '../middleware/rate-limit';
 
@@ -253,6 +254,8 @@ export function assetRoutes(deps: Deps) {
       const q = c.req.valid('query');
       const sensitive = c.get('principal')!.permissions.has('assets.read_sensitive');
       const conds: SQL[] = [];
+      const scoped = assetSiteCondition(siteScope(c.get('principal')));
+      if (scoped) conds.push(scoped);
       if (q.segmentId) conds.push(eq(assets.segmentId, q.segmentId));
       if (q.assetClass) conds.push(eq(assets.assetClass, q.assetClass));
       if (q.coverage) conds.push(eq(assets.monitoringCoverage, q.coverage));
@@ -322,7 +325,12 @@ export function assetRoutes(deps: Deps) {
     }),
     async (c) => {
       const { id } = c.req.valid('param');
-      const [row] = await db.select().from(assets).where(eq(assets.id, id)).limit(1);
+      const scopedDetail = assetSiteCondition(siteScope(c.get('principal')));
+      const [row] = await db
+        .select()
+        .from(assets)
+        .where(scopedDetail ? and(eq(assets.id, id), scopedDetail) : eq(assets.id, id))
+        .limit(1);
       if (!row) throw new HTTPException(404, { message: 'Asset not found' });
       const ifaces = await db.select().from(assetInterfaces).where(eq(assetInterfaces.assetId, id));
       const svc = await db

@@ -16,6 +16,7 @@ import { sensorHealth, sensors } from '../db/schema';
 import { AgentService } from '../agents/service';
 import { AssetService } from '../assets/service';
 import { requirePermission } from '../middleware/auth';
+import { sensorSiteCondition, siteScope } from '../middleware/scope';
 import type { AppEnv } from '../middleware/context';
 import { rateLimit } from '../middleware/rate-limit';
 import { sensorState } from '../monitoring/service';
@@ -95,7 +96,12 @@ export function sensorRoutes(deps: Deps) {
     }),
     async (c) => {
       const now = new Date();
-      const rows = await db.select().from(sensors).orderBy(sensors.name).limit(500);
+      const rows = await db
+        .select()
+        .from(sensors)
+        .where(sensorSiteCondition(siteScope(c.get('principal'))))
+        .orderBy(sensors.name)
+        .limit(500);
       const out = [];
       for (const s of rows) out.push(await toSensorStatus(db, s, now));
       return c.json(out, 200);

@@ -29,6 +29,8 @@ export const users = pgTable(
     failedLoginCount: integer('failed_login_count').notNull().default(0),
     lockedUntil: ts('locked_until'),
     mfaEnrolled: boolean('mfa_enrolled').notNull().default(false),
+    /** False restricts the user to the sites in user_site_grants (fail closed when empty). */
+    allSites: boolean('all_sites').notNull().default(true),
     /** 'local' (password) or 'oidc'. SSO accounts hold an unusable password hash. */
     authProvider: text('auth_provider').notNull().default('local'),
     /** `${issuer}|${sub}` for SSO accounts; the stable identity, never the e-mail. */
@@ -123,4 +125,28 @@ export const refreshTokens = pgTable(
     index('refresh_tokens_family_idx').on(t.familyId),
     index('refresh_tokens_user_expires_idx').on(t.userId, t.expiresAt),
   ],
+);
+
+/** Physical or logical sites; the key is what assets (via segments), sensors and segments carry. */
+export const sites = pgTable('sites', {
+  key: text('key').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description'),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: ts('created_at').notNull().defaultNow(),
+});
+
+export const userSiteGrants = pgTable(
+  'user_site_grants',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    siteKey: text('site_key')
+      .notNull()
+      .references(() => sites.key, { onDelete: 'cascade' }),
+    grantedBy: uuid('granted_by').references(() => users.id, { onDelete: 'set null' }),
+    grantedAt: ts('granted_at').notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.siteKey] })],
 );

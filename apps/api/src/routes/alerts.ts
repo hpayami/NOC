@@ -19,6 +19,7 @@ import {
 import type { Deps } from '../app-deps';
 import { alerts, securityEvents, sensors } from '../db/schema';
 import { requirePermission } from '../middleware/auth';
+import { alertSiteCondition, eventSiteCondition, siteScope } from '../middleware/scope';
 import type { AppEnv } from '../middleware/context';
 
 const err = (d: string) => ({
@@ -152,6 +153,8 @@ export function alertRoutes(deps: Deps) {
     async (c) => {
       const q = c.req.valid('query');
       const conds: SQL[] = [];
+      const scopedAlerts = alertSiteCondition(siteScope(c.get('principal')));
+      if (scopedAlerts) conds.push(scopedAlerts);
       if (q.status) conds.push(eq(alerts.status, q.status));
       if (q.open) conds.push(notInArray(alerts.status, [...CLOSED_ALERT_STATUSES]));
       if (q.severity) conds.push(eq(alerts.severity, q.severity));
@@ -199,7 +202,12 @@ export function alertRoutes(deps: Deps) {
     }),
     async (c) => {
       const { id } = c.req.valid('param');
-      const [a] = await db.select().from(alerts).where(eq(alerts.id, id)).limit(1);
+      const scopedDetail = alertSiteCondition(siteScope(c.get('principal')));
+      const [a] = await db
+        .select()
+        .from(alerts)
+        .where(scopedDetail ? and(eq(alerts.id, id), scopedDetail) : eq(alerts.id, id))
+        .limit(1);
       if (!a) throw new HTTPException(404, { message: 'Alert not found' });
       const conds: SQL[] = [eq(securityEvents.type, 'alert')];
       if (a.ruleRef) conds.push(eq(securityEvents.ruleId, a.ruleRef));
@@ -450,6 +458,8 @@ export function eventRoutes(deps: Deps) {
       if (to.getTime() - from.getTime() > MAX_RANGE_MS)
         throw new HTTPException(400, { message: 'Range exceeds 7 days' });
       const conds: SQL[] = [gte(securityEvents.eventTime, from), lte(securityEvents.eventTime, to)];
+      const scopedEvents = eventSiteCondition(siteScope(c.get('principal')));
+      if (scopedEvents) conds.push(scopedEvents);
       if (q.sensorId) conds.push(eq(securityEvents.sourceSensorId, q.sensorId));
       if (q.category) conds.push(eq(securityEvents.category, q.category));
       if (q.type) conds.push(eq(securityEvents.type, q.type));
