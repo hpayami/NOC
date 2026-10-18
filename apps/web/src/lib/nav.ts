@@ -36,7 +36,7 @@ export const NAV: NavItem[] = [
     capabilities: ['network.topology'],
     permission: 'network.read',
     phase: 1,
-    implemented: false,
+    implemented: true,
   },
   {
     slug: 'nids',

@@ -15,3 +15,6 @@ export * from './rules/approval';
 export * from './rules/identity';
 export * from './rules/availability';
 export * from './entities/monitoring';
+export * from './entities/discovery';
+export * from './entities/collectors';
+export * from './rules/discovery';

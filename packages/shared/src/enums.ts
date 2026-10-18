@@ -309,6 +309,18 @@ export const CheckOutcomeValues = ['up', 'down', 'timeout', 'error', 'unsupporte
 export const CheckOutcome = e(CheckOutcomeValues);
 export type CheckOutcome = z.infer<typeof CheckOutcome>;
 
+export const DiscoveryJobStatusValues = [
+  'pending_approval',
+  'approved',
+  'rejected',
+  'running',
+  'completed',
+  'cancelled',
+  'failed',
+] as const;
+export const DiscoveryJobStatus = e(DiscoveryJobStatusValues);
+export type DiscoveryJobStatus = z.infer<typeof DiscoveryJobStatus>;
+
 export const CoverageStateValues = ['monitored', 'partial', 'unmonitored', 'unknown'] as const;
 export const CoverageState = e(CoverageStateValues);
 export type CoverageState = z.infer<typeof CoverageState>;

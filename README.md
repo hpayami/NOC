@@ -79,6 +79,12 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   (`/api/v1/sensors/*`). Operational status is derived from evidence: a silent collector yields
   `unreachable_monitoring_path`, never `offline`. ICMP/HTTP checks are stored as `unsupported`
   until an executor exists. Web **NOC Operations** page.
+- **Approval-gated active discovery** (`/api/v1/discovery/jobs`): request (`discovery.run_active`)
+  → approve by a _different_ person (`discovery.approve_active`) → run. Scope policy: never
+  public, only inside segments that allow active discovery, bounded size/rate, connect-level
+  techniques; dry-run by default; the worker re-checks every target before connecting.
+- **SNMPv3 via collectors** (`/api/v1/collectors/snmp/snapshots`): interfaces, counters → metrics,
+  LLDP neighbours → **verified** topology edges. Web **Topology** page.
 
 ## What Phase 0 provides
 

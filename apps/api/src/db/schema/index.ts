@@ -6,3 +6,4 @@ export * from './secops';
 export * from './governance';
 export * from './audit';
 export * from './monitoring';
+export * from './discovery';

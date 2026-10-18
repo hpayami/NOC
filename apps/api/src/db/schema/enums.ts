@@ -3,6 +3,7 @@ import {
   AlertStatusValues,
   CheckKindValues,
   CheckOutcomeValues,
+  DiscoveryJobStatusValues,
   AssetClassValues,
   AssuranceStateValues,
   ConfidenceValues,
@@ -63,6 +64,7 @@ export const ruleLifecycleEnum = pgEnum('rule_lifecycle', RuleLifecycleValues);
 export const coverageStateEnum = pgEnum('coverage_state', CoverageStateValues);
 export const checkKindEnum = pgEnum('check_kind', CheckKindValues);
 export const checkOutcomeEnum = pgEnum('check_outcome', CheckOutcomeValues);
+export const discoveryJobStatusEnum = pgEnum('discovery_job_status', DiscoveryJobStatusValues);
 export const auditOutcomeEnum = pgEnum('audit_outcome', ['success', 'denied', 'failure']);
 export const approvalSubjectEnum = pgEnum('approval_subject', [
   'response_action',

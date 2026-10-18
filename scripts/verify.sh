@@ -7,11 +7,12 @@ cd "$ROOT"
 export NEXT_TELEMETRY_DISABLED=1
 step() { log "▶ $1"; shift; "$@" || die "step failed: see above"; }
 
-step "typecheck" pnpm -s typecheck
-step "lint" pnpm -s lint
-step "format" pnpm -s format:check
-step "tests (shared, api, web)" pnpm -s -r test
-step "build (api, web)" pnpm -s -r build
+# Not silenced on purpose: a failing step must show its diagnostics.
+step "typecheck" pnpm -r typecheck
+step "lint" pnpm lint
+step "format" pnpm format:check
+step "tests (shared, api, web)" pnpm -r test
+step "build (api, web)" pnpm -r build
 if [[ -x services/analysis/.venv/bin/pytest ]]; then
   step "analysis: ruff" services/analysis/.venv/bin/ruff check services/analysis
   step "analysis: pytest" bash -c 'cd services/analysis && .venv/bin/pytest -q'

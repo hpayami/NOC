@@ -75,3 +75,43 @@ Totals: shared 70, API 51, web 4; e2e covers the NOC page.
 
 SNMPv3 poller, host agent, passive discovery connectors, LLDP/flow topology edges, approval-gated
 active discovery, threshold alerts/escalation (Phase 2 alert queue), retention enforcement jobs.
+
+## Slice 3 — approval-gated active discovery, SNMPv3 snapshots, verified topology (2026-10-18)
+
+**Delivered**
+
+- `packages/shared/src/rules/discovery.ts`: `validateDiscoveryScope` (never public; every include
+  range must lie inside a segment with `activeDiscoveryAllowed`; connect-level techniques only;
+  ≤ 4096 targets, ≤ 16 concurrency, ≤ 50 rps; IPv6 ranges refused), `expandTargets`
+  (host addresses only, exclusions, cap). 5 tests.
+- Schema (`0002_phase1_discovery`): `discovery_jobs`, `discovery_job_targets`.
+- `apps/api/src/discovery/service.ts`: request → decision → claim → run → finish. Two-person rule
+  enforced in the service (requester can never approve; denial is audited and persists). The
+  worker re-validates the scope policy and runs `evaluateTarget` per target _before_ any connect;
+  dry-run (default) records decisions only; pacing via token gate; cancellation honoured between
+  targets; reachable hosts become observations (`tcp_service_check`, open ports in attributes).
+- Routes: `/api/v1/discovery/jobs` (list/create/detail), `/jobs/:id/decision`
+  (`discovery.approve_active`), `/jobs/:id/run` (`discovery.run_active`, 202 + background),
+  `/jobs/:id/cancel`.
+- `apps/api/src/collectors/snmp.ts` + `POST /api/v1/collectors/snmp/snapshots`
+  (`monitoring.ingest`): collectors push normalized SNMPv3 walks; the platform never speaks SNMP.
+  Produces an observation (identity resolution), one interface per ifName with speed/admin/oper
+  state, counters as `if.<ifIndex>.*` metrics + `sys.uptime_seconds`, and LLDP neighbours as
+  **verified** `layer2_adjacency` edges when the neighbour resolves by chassis MAC or unique
+  sysName; unresolved neighbours are counted, never invented.
+- Web: Topology page (segments with their active-discovery policy, relationships with
+  verified/inferred label and evidence). Capabilities: `asset.discovery.active` and
+  `network.topology` → `available`; `noc.health_monitoring` stays `degraded` (host agent pending).
+
+**Verified**
+
+API: 6 discovery tests (policy rejections, two-person rule + state machine + audit, dry run with
+exclusions, live loopback run creating an observation with the open port, run-time window denial,
+cancellation) and 3 SNMP tests (RBAC/collector checks, interface + metric mapping with MAC-based
+re-correlation, LLDP → verified edge with an unresolved neighbour). Totals: shared 75, API 60,
+web 4; e2e covers the Topology page.
+
+**Not delivered yet**
+
+Host agent, passive ARP/DHCP/DNS connectors, flow-derived inferred edges, threshold alerting and
+escalation (Phase 2 alert queue), discovery/maintenance UI forms (API-only today), retention jobs.

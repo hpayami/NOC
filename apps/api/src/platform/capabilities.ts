@@ -32,22 +32,24 @@ export const CAPABILITIES: CapabilityStatus[] = [
   },
   {
     id: 'asset.discovery.active',
-    state: 'disabled',
+    state: 'available',
     phase: 1,
-    reason: 'Requires approved scope; disabled by default',
+    reason:
+      'Approval-gated TCP host/service discovery inside segments that allow it; two-person rule; dry-run default',
   },
   {
     id: 'noc.health_monitoring',
     state: 'degraded',
     phase: 1,
     reason:
-      'TCP availability checks, collector heartbeats, maintenance windows and metric ingestion; SNMPv3/agent pollers pending',
+      'TCP availability checks, collector heartbeats, maintenance windows, metrics and SNMPv3 snapshots via collectors; host agent pending',
   },
   {
     id: 'network.topology',
-    state: 'degraded',
+    state: 'available',
     phase: 1,
-    reason: 'Segments and graph API exist; no relationship sources (LLDP/flows) yet',
+    reason:
+      'Verified L2 adjacency from collector LLDP snapshots; observed-communication edges await flow sources',
   },
   {
     id: 'nids.suricata',

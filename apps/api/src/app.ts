@@ -10,6 +10,8 @@ import { errorBody, notFound, onError } from './middleware/errors';
 import { rateLimit } from './middleware/rate-limit';
 import { assetRoutes } from './routes/assets';
 import { authRoutes } from './routes/auth';
+import { collectorRoutes } from './routes/collectors';
+import { discoveryRoutes } from './routes/discovery';
 import { assetMetricRoutes, monitoringRoutes } from './routes/monitoring';
 import { networkRoutes } from './routes/network';
 import { sensorRoutes } from './routes/sensors';
@@ -90,6 +92,8 @@ export function createApp(deps: Deps) {
   app.route('/api/v1/network', networkRoutes(deps));
   app.route('/api/v1/monitoring', monitoringRoutes(deps));
   app.route('/api/v1/sensors', sensorRoutes(deps));
+  app.route('/api/v1/discovery', discoveryRoutes(deps).app);
+  app.route('/api/v1/collectors', collectorRoutes(deps));
   app.route('/api/v1/platform', platformRoutes(deps));
   app.route('/api/v1/audit', auditRoutes(deps));
 
