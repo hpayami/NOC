@@ -1,0 +1,61 @@
+import { serve } from '@hono/node-server';
+import pino from 'pino';
+import { createApp } from './app';
+import { AuditService } from './audit/service';
+import { loadEnv } from './config/env';
+import { createDb } from './db/client';
+import { RateLimiter } from './middleware/rate-limit';
+import { createMetrics } from './platform/metrics';
+import { syncRbacCatalog } from './platform/seed';
+import { TokenService } from './security/tokens';
+
+async function main() {
+  const env = loadEnv();
+  const logger = pino({
+    level: env.LOG_LEVEL,
+    base: { service: 'noc-api', version: env.APP_VERSION },
+    redact: {
+      paths: [
+        'req.headers.authorization',
+        'req.headers.cookie',
+        '*.password',
+        '*.passwordHash',
+        '*.accessToken',
+      ],
+      censor: '[redacted]',
+    },
+  });
+
+  const handle = createDb(env.DATABASE_URL, { max: env.DATABASE_POOL_MAX });
+  await syncRbacCatalog(handle.db);
+
+  const deps = {
+    env,
+    db: handle.db,
+    logger,
+    tokens: new TokenService(env.AUTH_JWT_SECRET, env.AUTH_ACCESS_TTL_SECONDS),
+    audit: new AuditService(handle.db),
+    limiter: new RateLimiter(),
+    metrics: createMetrics(),
+  };
+  const app = createApp(deps);
+
+  const server = serve({ fetch: app.fetch, hostname: env.API_HOST, port: env.API_PORT }, (info) => {
+    logger.info({ host: info.address, port: info.port, env: env.NODE_ENV }, 'noc-api listening');
+  });
+
+  const shutdown = async (signal: string) => {
+    logger.info({ signal }, 'shutting down');
+    server.close();
+    await handle.close();
+    process.exit(0);
+  };
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+}
+
+main().catch((err) => {
+  // Logger may not exist yet (env validation failed); stderr is the only safe sink.
+  process.stderr.write(`[noc-api] fatal: ${err instanceof Error ? err.message : String(err)}\n`);
+  process.exit(1);
+});

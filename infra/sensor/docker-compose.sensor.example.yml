@@ -1,0 +1,31 @@
+# EXAMPLE ONLY — out-of-band Suricata sensor (Mode A). Copy to a Linux sensor host and review
+# every value before use. Not referenced by scripts/start.sh and not started by default.
+name: noc-sensor
+
+services:
+  suricata:
+    image: jasonish/suricata:7.0
+    network_mode: host
+    cap_add: [NET_ADMIN, NET_RAW, SYS_NICE]
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    command:
+      [
+        '-i',
+        '${SENSOR_INTERFACE:?mirror/TAP interface name}',
+        '--set',
+        'outputs.1.eve-log.filetype=regular',
+        '-v',
+      ]
+    environment:
+      SURICATA_OPTIONS: ''
+    volumes:
+      - suricata_logs:/var/log/suricata
+      - ./suricata.yaml:/etc/suricata/suricata.yaml:ro # reviewed config; af-packet, no IPS section
+      - ./rules:/var/lib/suricata/rules:ro # licensed rule set, versioned
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+    restart: unless-stopped
+
+volumes:
+  suricata_logs:

@@ -1,0 +1,46 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/vazirmatn';
+
+@theme {
+  --font-sans: 'Vazirmatn Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, 'JetBrains Mono', Menlo, monospace;
+
+  --color-bg: #0b0f14;
+  --color-surface: #111720;
+  --color-surface-2: #182130;
+  --color-border: #233041;
+  --color-fg: #e6edf3;
+  --color-muted: #8b98a9;
+  --color-accent: #4da3ff;
+
+  --color-sev-info: #6b7a8c;
+  --color-sev-low: #3b9ddd;
+  --color-sev-medium: #e0a526;
+  --color-sev-high: #f0742a;
+  --color-sev-critical: #e5484d;
+  --color-ok: #2ebd85;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  min-height: 100%;
+}
+
+/* Technical identifiers (IPs, hashes, hostnames) always render LTR inside RTL text. */
+.ltr {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-family: var(--font-mono);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}

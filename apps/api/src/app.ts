@@ -1,0 +1,106 @@
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { bodyLimit } from 'hono/body-limit';
+import { cors } from 'hono/cors';
+import { secureHeaders } from 'hono/secure-headers';
+import { HTTPException } from 'hono/http-exception';
+import type { Deps } from './app-deps';
+import { authenticate } from './middleware/auth';
+import { requestContext, type AppEnv } from './middleware/context';
+import { errorBody, notFound, onError } from './middleware/errors';
+import { rateLimit } from './middleware/rate-limit';
+import { authRoutes } from './routes/auth';
+import { auditRoutes, healthRoutes, platformRoutes } from './routes/platform';
+import { roleRoutes, userRoutes } from './routes/users';
+
+export function createApp(deps: Deps) {
+  const { env, db, tokens, logger, limiter, metrics } = deps;
+
+  const app = new OpenAPIHono<AppEnv>({
+    // Zod validation failures become structured 400s instead of leaking internals.
+    defaultHook: (result, c) => {
+      if (!result.success) {
+        return c.json(
+          errorBody(
+            c,
+            'validation_failed',
+            'Request failed validation',
+            result.error.issues.map((i) => ({ path: i.path, message: i.message })),
+          ),
+          400,
+        );
+      }
+      return undefined;
+    },
+  });
+
+  app.onError(onError);
+  app.notFound(notFound);
+
+  app.use('*', requestContext(env, logger));
+  app.use(
+    '*',
+    secureHeaders({ crossOriginResourcePolicy: 'same-origin', referrerPolicy: 'no-referrer' }),
+  );
+  app.use(
+    '*',
+    cors({
+      origin: (origin) => (env.CORS_ALLOWED_ORIGINS.includes(origin) ? origin : null),
+      credentials: true,
+      allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowHeaders: ['Authorization', 'Content-Type', 'X-Request-Id'],
+      exposeHeaders: ['X-Request-Id', 'Retry-After'],
+      maxAge: 600,
+    }),
+  );
+  app.use(
+    '*',
+    bodyLimit({
+      maxSize: env.BODY_LIMIT_BYTES,
+      onError: () => {
+        throw new HTTPException(413, { message: 'Request body too large' });
+      },
+    }),
+  );
+  app.use('*', async (c, next) => {
+    const end = metrics.httpDuration.startTimer({ method: c.req.method, route: c.req.routePath });
+    await next();
+    end();
+    metrics.httpRequests.inc({
+      method: c.req.method,
+      route: c.req.routePath,
+      status: String(c.res.status),
+    });
+  });
+  app.use('*', authenticate(db, tokens));
+  app.use(
+    '/api/*',
+    rateLimit(limiter, { name: 'api', capacity: 300, refillPerSecond: 5, keyBy: 'ip+user' }),
+  );
+
+  app.route('/', healthRoutes(deps));
+  app.route('/api/v1/auth', authRoutes(deps));
+  app.route('/api/v1/users', userRoutes(deps));
+  app.route('/api/v1/roles', roleRoutes());
+  app.route('/api/v1/platform', platformRoutes(deps));
+  app.route('/api/v1/audit', auditRoutes(deps));
+
+  app.openAPIRegistry.registerComponent('securitySchemes', 'bearerAuth', {
+    type: 'http',
+    scheme: 'bearer',
+    bearerFormat: 'JWT',
+  });
+  app.doc31('/api/v1/openapi.json', {
+    openapi: '3.1.0',
+    info: {
+      title: 'NOC Platform API',
+      version: env.APP_VERSION,
+      description:
+        'Phase 0 management-plane API. Capabilities not listed as "available" in /api/v1/platform/status are not operational.',
+    },
+    servers: [{ url: '/' }],
+  });
+
+  return app;
+}
+
+export type App = ReturnType<typeof createApp>;
