@@ -156,7 +156,7 @@ export const NAV: NavItem[] = [
     capabilities: ['soc.incidents', 'assessment.engagements'],
     permission: 'platform.status.read',
     phase: 5,
-    implemented: false,
+    implemented: true,
   },
   {
     slug: 'administration',

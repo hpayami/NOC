@@ -162,6 +162,11 @@ test.describe('Phase 0 shell', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('هوش تهدید');
     await expect(page.getByTestId('ti-stats')).toContainText('هیچ نشانگری وارد نشده است');
     await expect(page.getByRole('button', { name: 'import' })).toHaveCount(0);
+    // Reports: every plane states its own state; nothing the analyst cannot read is estimated.
+    await page.goto('/reports?days=7');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('گزارش‌ها');
+    await expect(page.getByTestId('report-rep.governance')).toContainText('محفوظ');
+    await expect(page.getByTestId('report-rep.incidents')).toContainText('در دسترس');
     // Unimplemented workspace shows real capability state, never sample data.
     await page.goto('/pentest');
     await expect(page.getByText('این بخش هنوز عملیاتی نیست')).toBeVisible();

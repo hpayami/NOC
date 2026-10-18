@@ -154,3 +154,55 @@ API 102, web 4, pytest 8 + 7; e2e 5/5.
 
 Automatic feed download (the operator imports from a trusted copy), product/version-based
 matching (CPE), EPSS scores.
+
+## Slice 4 — Reports workspace: period posture report (2026-10-18)
+
+**Delivered**
+
+- **Contract** (`packages/shared/src/entities/reports.ts`): `PostureReport` with twelve
+  sections — assets, sensors, events, alerts, incidents, response actions, inline prevention,
+  authorised assessments, findings/vulnerabilities, threat intelligence, advisory analytics,
+  governance/audit — each carrying `state` (`available` / `withheld` / `not_configured` /
+  `unavailable`), the permission that governs it, a note and `data` only when available; the
+  period, the site scope the report was reduced to, and a limitations list. `ReportPeriodQuery`
+  bounds the period to 1–365 days.
+- **Rules** (`rules/posture-report.ts`, pure): `durationStats` (mean/median, null on empty),
+  `humanDuration`, and a deterministic Markdown renderer that prints every section's state
+  before any figure, so "withheld" or "not configured" is never read as zero activity.
+- **Service** (`ReportService.posture`): bounded aggregate queries per plane, each behind the
+  plane's own read permission and reduced by the reader's site scope through the existing
+  predicates (assets, sensors, events, alerts, incidents, response actions, findings, ML
+  results, threat-intel matches by attributed asset; IPS policies through their sensor's site).
+  Engagements, runs and the audit trail are platform-wide and say so. Alerts report opened,
+  closed, false positives and open-at-end but state that acknowledgement time is **not
+  tracked** rather than estimating an MTTA; incidents report mean and median opened→closed for
+  those closed in the period. Analytics distinguishes "withheld" from "unavailable" (service
+  down and nothing stored). Governance includes denied/failed audit outcomes, logins and the
+  hash-chain verification result. Every generation is audited (`reports.posture`) with the
+  sections withheld.
+- API `GET /api/v1/reports/posture?days=&format=json|markdown` (`platform.status.read`; the
+  sections do their own gating). Web `/reports`: 7/30/90-day selector, limitations, one card
+  per section with its state badge and the governing permission when withheld, Markdown
+  download through the BFF. NAV marks the workspace implemented.
+
+**Verified**
+
+Shared (2): duration statistics never invent values; the renderer prints state lines for
+withheld / not configured / unavailable sections, figures for available ones, no
+`undefined`/`NaN`, deterministic output. API (1, through the real pipeline): an analyst on an
+empty platform gets `not_configured` for the planes they can read and `withheld` for IPS,
+assessments and ML; `days` out of range is 400; after three detections (one tuple repeated),
+one indicator hit, one closed and one open incident the analyst's report counts 3 events from
+1 sensor, 3 alerts opened with the indicator's severity, 2 incidents (1 closed, mean = median),
+1 threat-intel match by type; the admin's report withholds alerts but reports sensors, assets
+not configured, and governance with the chain verified and the logins counted; Markdown carries
+the same figures and the withheld line; generation is audited. Totals: shared 127, API 110
+(27 files), web 4, pytest 8 + agent 7; e2e 5/5 (analyst sees governance withheld, incidents
+available).
+
+**Known limitations**
+
+No scheduled or stored reports (each call recomputes; the audit trail records who generated
+what); no per-site breakdown inside a report (one scope per report); the audit-chain check runs
+over the whole trail on every generation by an `audit.read` reader; alert acknowledgement time
+remains untracked by design until alerts carry status timestamps.

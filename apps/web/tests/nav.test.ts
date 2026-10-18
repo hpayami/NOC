@@ -31,6 +31,7 @@ describe('navigation and i18n', () => {
       'nips',
       'noc',
       'red-team',
+      'reports',
       'sensors',
       'soc-alerts',
       'threat-intel',

@@ -197,6 +197,15 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   entries; known-exploited and CVSS ≥ 9 raise the explained asset risk. Enrichment is by CVE id
   only, never by product name. Capability `vuln.catalog` reports the state.
 
+## Reports
+
+- `GET /api/v1/reports/posture?days=30` (JSON or `format=markdown`) aggregates every plane for
+  the period: assets, sensors, events, alerts, incidents (mean/median time to close), response
+  actions, inline prevention, assessments, findings, threat intelligence, advisory analytics,
+  governance (denied audit outcomes, logins, chain verification). Each section states whether
+  it is available, withheld by permission, not configured or unavailable — nothing is estimated.
+  Web `/reports` with Markdown download.
+
 ## Threat intelligence
 
 - Import indicators (platform JSON, CSV, STIX 2.1 single-comparison patterns) under
