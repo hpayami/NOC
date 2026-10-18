@@ -10,6 +10,7 @@ import { AvailabilityService, MonitoringScheduler } from './monitoring/service';
 import { createMetrics } from './platform/metrics';
 import { syncRbacCatalog } from './platform/seed';
 import { IpsService } from './ips/service';
+import { MlService } from './ml/service';
 import { RetentionScheduler, RetentionService } from './retention/service';
 import { TokenService } from './security/tokens';
 
@@ -47,6 +48,10 @@ async function main() {
     bus: new AlertBus(),
     retention,
     ips: new IpsService(handle.db, audit),
+    ml: new MlService(handle.db, audit, logger, {
+      url: env.ANALYSIS_URL,
+      token: env.ANALYSIS_INTERNAL_TOKEN ?? null,
+    }),
   };
   const app = createApp(deps);
 

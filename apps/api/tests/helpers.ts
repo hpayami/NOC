@@ -8,6 +8,7 @@ import { createDb, type DbHandle } from '../src/db/client';
 import { RateLimiter } from '../src/middleware/rate-limit';
 import { createMetrics } from '../src/platform/metrics';
 import { IpsService } from '../src/ips/service';
+import { MlService } from '../src/ml/service';
 import { RetentionService } from '../src/retention/service';
 import { syncRbacCatalog } from '../src/platform/seed';
 import { TokenService } from '../src/security/tokens';
@@ -62,13 +63,19 @@ export async function createHarness(
     bus: new AlertBus(),
     retention: new RetentionService(handle.db, audit, { batchSize: 2, maxBatchesPerDataset: 3 }),
     ips: new IpsService(handle.db, audit),
+    ml: new MlService(handle.db, audit, pino({ level: 'silent' }), {
+      url: env.ANALYSIS_URL,
+      token: env.ANALYSIS_INTERNAL_TOKEN ?? null,
+      timeoutMs: 1500,
+      probeTtlMs: 0,
+    }),
   });
   return { app, handle, env, limiter, close: () => handle.close() };
 }
 
 export async function resetDatabase(handle: DbHandle): Promise<void> {
   await handle.db.execute(
-    sql`truncate table users, refresh_tokens, audit_events, assets, sensors, alerts, incidents, retention_policies, response_actions, approvals, ips_policies, assessment_engagements, vulnerability_findings restart identity cascade`,
+    sql`truncate table users, refresh_tokens, audit_events, assets, sensors, alerts, incidents, retention_policies, response_actions, approvals, ips_policies, assessment_engagements, vulnerability_findings, ml_inference_results restart identity cascade`,
   );
 }
 

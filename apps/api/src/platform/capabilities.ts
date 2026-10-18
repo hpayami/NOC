@@ -141,9 +141,9 @@ export const CAPABILITIES: CapabilityStatus[] = [
   },
   {
     id: 'ml.analytics',
-    state: 'not_implemented',
+    state: 'not_configured',
     phase: 6,
-    reason: 'Analysis service exposes health only; no models trained',
+    reason: 'Analysis service not reachable; advisory baseline scoring unavailable',
   },
 ];
 
@@ -159,6 +159,7 @@ export function resolveCapabilities(input: {
     expiresAt: Date | null;
     applyState: string;
   }>;
+  ml?: { reachable: boolean; models: number; results: number; detail: string | null };
   now: Date;
 }): CapabilityStatus[] {
   const engines: Record<string, { sensors: SensorState; label: string }> = {
@@ -166,6 +167,20 @@ export function resolveCapabilities(input: {
     'nsm.zeek': { sensors: input.zeekSensors ?? [], label: 'Zeek' },
   };
   return CAPABILITIES.map((cap) => {
+    if (cap.id === 'ml.analytics') {
+      const ml = input.ml;
+      if (!ml) return cap;
+      if (!ml.reachable)
+        return {
+          ...cap,
+          reason: `Analysis service not reachable (${ml.detail ?? 'no detail'}); results stored so far: ${ml.results}`,
+        };
+      return {
+        ...cap,
+        state: ml.models > 0 ? 'available' : 'degraded',
+        reason: `Advisory only — ${ml.models} statistical model(s) registered, ${ml.results} stored result(s); nothing acts on scores automatically`,
+      };
+    }
     if (cap.id === 'nips.inline_prevention') {
       const on = input.enabledIpsPolicies ?? [];
       if (on.length === 0) return cap;

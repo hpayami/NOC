@@ -20,7 +20,10 @@ def test_status_is_advisory_and_model_free():
     assert res.status_code == 200
     body = res.json()
     assert body["advisory_only"] is True
-    assert body["models"] == []
+    assert [m["name"] for m in body["models"]] == ["robust-baseline"]
+    assert body["models"][0]["kind"] == "statistical_baseline"
+    assert body["models"][0]["state"] == "advisory"
+    assert "no labelled evaluation" in body["models"][0]["evaluation"]
     assert body["external_model_apis_allowed"] is False
 
 
@@ -28,7 +31,9 @@ def test_internal_token_enforced_when_configured(monkeypatch):
     monkeypatch.setattr(settings, "internal_token", "a-long-enough-internal-token-value")
     assert client.get("/api/v1/analysis/status").status_code == 401
     assert client.get("/api/v1/analysis/status", headers={"x-internal-token": "wrong"}).status_code == 401
-    ok = client.get("/api/v1/analysis/status", headers={"x-internal-token": "a-long-enough-internal-token-value"})
+    ok = client.get(
+        "/api/v1/analysis/status", headers={"x-internal-token": "a-long-enough-internal-token-value"}
+    )
     assert ok.status_code == 200
 
 

@@ -132,7 +132,7 @@ export const NAV: NavItem[] = [
     capabilities: ['ml.analytics'],
     permission: 'ml.read',
     phase: 6,
-    implemented: false,
+    implemented: true,
   },
   {
     slug: 'sensors',

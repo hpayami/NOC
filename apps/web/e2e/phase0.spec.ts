@@ -171,6 +171,12 @@ test.describe('Phase 0 shell', () => {
     await expect(page.getByText('هیچ سیاست پیشگیری درون‌خطی پیشنهاد نشده است.')).toBeVisible();
     // No Suricata sensor is registered, so no proposal form is offered — nothing to switch on.
     await expect(page.getByText('سنسور Suricata ثبت نشده است')).toBeVisible();
+    // ML analytics: advisory banner, service state reported, no fabricated scores.
+    await page.goto('/ml-analytics');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('تحلیل ML (مشورتی)');
+    await expect(page.getByText('فقط مشورتی', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('ml-reachable')).toHaveText(/در دسترس|خارج از دسترس/);
+    await expect(page.getByText('هنوز امتیازی محاسبه نشده است.')).toBeVisible();
   });
 
   test('a red-team operator drafts an authorised engagement and submits it for approval', async ({

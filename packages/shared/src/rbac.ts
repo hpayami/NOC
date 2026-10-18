@@ -235,6 +235,7 @@ export const ROLE_DEFINITIONS: Record<RoleKey, RoleDefinition> = {
       'ips.propose',
       'ips.enable',
       'ml.read',
+      'ml.manage',
       'assessments.read',
       'response.read',
       'events.ingest',

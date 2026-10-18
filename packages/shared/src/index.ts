@@ -33,3 +33,4 @@ export * from './entities/ips';
 export * from './rules/ips';
 export * from './entities/assessments';
 export * from './rules/assessment';
+export * from './entities/ml';

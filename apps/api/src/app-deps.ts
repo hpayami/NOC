@@ -3,6 +3,7 @@ import type { AuditService } from './audit/service';
 import type { AlertBus } from './events/bus';
 import type { Env } from './config/env';
 import type { IpsService } from './ips/service';
+import type { MlService } from './ml/service';
 import type { Db } from './db/client';
 import type { RateLimiter } from './middleware/rate-limit';
 import type { Metrics } from './platform/metrics';
@@ -20,4 +21,5 @@ export interface Deps {
   bus: AlertBus;
   retention: RetentionService;
   ips: IpsService;
+  ml: MlService;
 }

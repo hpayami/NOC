@@ -45,6 +45,9 @@ const EnvSchema = z
     MONITORING_SCHEDULER_ENABLED: bool.default(true),
     MONITORING_TICK_SECONDS: z.coerce.number().int().min(5).max(300).default(15),
     MONITORING_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(8),
+    /** Analysis service (advisory ML). Unreachable is a reported state, not a startup failure. */
+    ANALYSIS_URL: z.string().url().default('http://127.0.0.1:8000'),
+    ANALYSIS_INTERNAL_TOKEN: z.string().min(24).optional(),
     RETENTION_ENABLED: bool.default(true),
     RETENTION_INTERVAL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
     APP_VERSION: z.string().default('0.1.0-phase1'),
