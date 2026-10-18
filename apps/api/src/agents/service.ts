@@ -149,6 +149,9 @@ export class AgentService {
           lastHeartbeatAt: now,
           engineVersion: body.engineVersion ?? sql`${sensors.engineVersion}`,
           inlineCapable: body.inlineCapable,
+          ...(body.rulesBundleSha256
+            ? { rulesBundleSha256: body.rulesBundleSha256, rulesBundleAppliedAt: now }
+            : {}),
         })
         .where(eq(sensors.id, sensor.sensorId));
     });

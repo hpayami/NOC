@@ -95,3 +95,50 @@ e2e 3/3 (analyst now also visits Detection Engineering).
 Zeek/Suricata forwarder binaries (sensor side), rule-set fetching from upstream (deliberately
 manual: licence must be declared), Sigma/host-event sources, retention jobs, SSE for other
 queues, cross-engine alert merging beyond shared correlation ids.
+
+## Slice 3 — Rule deployment bundles with site targeting (2026-10-18)
+
+**Delivered**
+
+- **Deploy is a separate act.** `POST /api/v1/detection-rules/{id}/deploy` moves a _validated_
+  rule to `deployed` and needs `detection_rules.deploy`, which the role catalogue keeps apart from
+  `detection_rules.change` (SoD pair: the engineer who writes rules does not ship them). Draft
+  rules cannot be deployed (409). Audited `detection_rules.deploy`.
+- **Site targeting.** `PUT /api/v1/detection-rules/{id}/targets` sets the rule's site keys
+  (validated against the sites catalogue; empty = every sensor of the engine). A targeted rule
+  never reaches a sensor without a site. Audited `detection_rules.targets`.
+- **Per-sensor bundles.** `GET /api/v1/agents/rules-bundle` (sensor credential) returns the
+  deployed, enabled rules for that sensor's engine (Suricata: `et_open`/`custom`/`vendor`; Zeek:
+  `zeek_script`) and site, in a stable order, with `bundleSha256` = SHA-256 of a canonical
+  manifest (source, id, revision, content hash). `ETag`/`If-None-Match` → 304 so sensors can poll
+  cheaply. Sensor kinds that consume no registry rules get 404, not an empty promise.
+- **Acknowledgement and state.** Heartbeats carry `rulesBundleSha256`; the sensor record stores
+  the acknowledged digest and time. `GET /api/v1/detection-rules/deployment` lists every enabled
+  sensor inside the caller's site scope with the expected digest/rule count versus what the sensor
+  acknowledged; `inSync` is true only for an exact match — a sensor that never acknowledged, or
+  acknowledged another bundle, is out of sync. Disabling or retiring a rule changes the expected
+  digest immediately.
+- Pure rules in `packages/shared/src/rules/rule-bundle.ts` (`bundleEngineFor`, `ruleTargetsSite`,
+  `selectBundleRules`, `bundleManifest`); the API only hashes.
+- Web: deploy button (for `detection_rules.deploy` holders, validated rules only), target-site
+  editor, and a deployment table (sensor, kind, site, expected rules, in/out of sync, acknowledged
+  digest and time).
+- Schema (`0016_phase2_rule_bundles`): `detection_rules.sites`, `sensors.rules_bundle_sha256`,
+  `sensors.rules_bundle_applied_at`.
+
+**Verified**
+
+Shared: engine mapping, site targeting, selection (draft/disabled/no-content/other-engine/other-
+site excluded, stable order), manifest sensitivity (revision and content change it, registry id
+does not). API: two sites, two Suricata sensors and one Zeek sensor; empty identical bundles
+before deployment; deploy refused for draft (409) and for the engineer (403); admin deploys;
+unknown target 400; targeted rule reaches dc1 only; Zeek gets none; 304 on matching ETag; bogus
+credential 401; heartbeat acknowledgement flips `inSync` for the right sensor only, a wrong
+digest stays out of sync; disabling a rule desynchronises until re-fetch and re-ack; sensor
+status exposes the digest; audit rows. Totals: shared 106, API 100, web 4, pytest 8; e2e 5/5.
+
+**Not delivered**
+
+A sensor-side agent that fetches and installs the bundle (the sensor contract is defined; the
+reference agent is Phase 4/7 work), rule-level per-sensor status (state is per bundle), Sigma
+compilation to engine rules.

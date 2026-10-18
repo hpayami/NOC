@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Id, ShortText, Timestamp } from '../common';
+import { Id, Sha256, ShortText, Timestamp } from '../common';
 import { SensorHealthState, SensorKind, SensorMode } from '../enums';
 
 export const Sensor = z.strictObject({
@@ -12,6 +12,9 @@ export const Sensor = z.strictObject({
   monitoredSegmentIds: z.array(Id),
   engineVersion: z.string().max(64).nullable(),
   ruleSetVersion: z.string().max(128).nullable(),
+  /** Last rule bundle the sensor acknowledged running, and when. */
+  rulesBundleSha256: Sha256.nullable(),
+  rulesBundleAppliedAt: Timestamp.nullable(),
   enabled: z.boolean(),
   /** Reported by the sensor itself; never assumed. */
   inlineCapable: z.boolean(),

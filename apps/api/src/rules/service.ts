@@ -2,15 +2,21 @@ import { createHash } from 'node:crypto';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import {
+  bundleEngineFor,
+  bundleManifest,
   parseSuricataRules,
   ruleSeverity,
   ruleTechniques,
+  selectBundleRules,
   type ImportRulesRequest,
   type ImportRulesResponse,
+  type RuleBundle,
+  type RuleDeploymentState,
 } from '@noc/shared';
 import type { AuditService } from '../audit/service';
 import type { Db, DbTx } from '../db/client';
-import { detectionRules } from '../db/schema';
+import { detectionRules, sensors, sites } from '../db/schema';
+import { sensorSiteCondition } from '../middleware/scope';
 
 export interface RuleActor {
   userId: string;
@@ -156,6 +162,159 @@ export class RuleService {
         .where(eq(detectionRules.id, ruleId))
         .returning();
       return updated!;
+    });
+  }
+
+  /**
+   * validated → deployed. Deployment is a separate permission from editing (SoD pair
+   * `detection_rules.change` / `detection_rules.deploy`); sensors pick the rule up on their next
+   * bundle fetch and acknowledge the digest in their heartbeat.
+   */
+  async deploy(ruleId: string, actor: RuleActor) {
+    return this.db.transaction(async (tx) => {
+      const [rule] = await tx
+        .select()
+        .from(detectionRules)
+        .where(eq(detectionRules.id, ruleId))
+        .limit(1)
+        .for('update');
+      if (!rule) throw new HTTPException(404, { message: 'Rule not found' });
+      if (rule.lifecycle !== 'validated')
+        throw new HTTPException(409, {
+          message: `Only validated rules can be deployed (rule is ${rule.lifecycle})`,
+        });
+      const [updated] = await tx
+        .update(detectionRules)
+        .set({ lifecycle: 'deployed', deployedAt: new Date() })
+        .where(eq(detectionRules.id, ruleId))
+        .returning();
+      await this.audit.record(
+        {
+          actorId: actor.userId,
+          actorLabel: actor.label,
+          action: 'detection_rules.deploy',
+          outcome: 'success',
+          targetType: 'detection_rule',
+          targetId: ruleId,
+          requestId: actor.requestId,
+          sourceIp: actor.ip,
+          metadata: { externalId: rule.externalId, revision: rule.revision, sites: rule.sites },
+        },
+        tx,
+      );
+      return updated!;
+    });
+  }
+
+  /** Targets must be known site keys; an empty list means every sensor of the engine. */
+  async setTargets(ruleId: string, siteKeys: string[], actor: RuleActor) {
+    const unique = [...new Set(siteKeys)];
+    if (unique.length) {
+      const known = await this.db
+        .select({ key: sites.key })
+        .from(sites)
+        .where(inArray(sites.key, unique));
+      const missing = unique.filter((k) => !known.some((s) => s.key === k));
+      if (missing.length)
+        throw new HTTPException(400, { message: `Unknown site(s): ${missing.join(', ')}` });
+    }
+    return this.db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(detectionRules)
+        .set({ sites: unique })
+        .where(eq(detectionRules.id, ruleId))
+        .returning();
+      if (!updated) throw new HTTPException(404, { message: 'Rule not found' });
+      await this.audit.record(
+        {
+          actorId: actor.userId,
+          actorLabel: actor.label,
+          action: 'detection_rules.targets',
+          outcome: 'success',
+          targetType: 'detection_rule',
+          targetId: ruleId,
+          requestId: actor.requestId,
+          sourceIp: actor.ip,
+          metadata: { sites: unique },
+        },
+        tx,
+      );
+      return updated;
+    });
+  }
+
+  /** Deployed, enabled rules for one sensor (engine + site), with a stable digest. */
+  async bundleFor(sensor: {
+    id: string;
+    kind: string;
+    site: string | null;
+  }): Promise<RuleBundle | null> {
+    const engine = bundleEngineFor(sensor.kind);
+    if (!engine) return null;
+    const rows = await this.db
+      .select()
+      .from(detectionRules)
+      .where(sql`${detectionRules.lifecycle} = 'deployed' and ${detectionRules.enabled} = true`)
+      .limit(20000);
+    const selected = selectBundleRules(rows, sensor);
+    return {
+      engine,
+      sensorId: sensor.id,
+      site: sensor.site,
+      generatedAt: new Date().toISOString(),
+      bundleSha256: sha256(bundleManifest(selected)),
+      ruleCount: selected.length,
+      rules: selected.map((r) => ({
+        id: r.id,
+        source: r.source,
+        externalId: r.externalId,
+        revision: r.revision,
+        contentSha256: r.contentSha256,
+        content: r.content!,
+      })),
+    };
+  }
+
+  /** Expected vs acknowledged bundle per enabled sensor, inside the caller's site scope. */
+  async deploymentState(scope: readonly string[] | null): Promise<RuleDeploymentState[]> {
+    const rows = await this.db
+      .select()
+      .from(sensors)
+      .where(sql`${sensors.enabled} = true and ${sensorSiteCondition(scope) ?? sql`true`}`)
+      .orderBy(sensors.name)
+      .limit(500);
+    const deployed = await this.db
+      .select()
+      .from(detectionRules)
+      .where(sql`${detectionRules.lifecycle} = 'deployed' and ${detectionRules.enabled} = true`)
+      .limit(20000);
+    const digests = new Map<string, { sha: string; count: number }>();
+    return rows.map((s) => {
+      const engine = bundleEngineFor(s.kind);
+      let expected: { sha: string; count: number } | null = null;
+      if (engine) {
+        const key = `${s.kind}|${s.site ?? ''}`;
+        expected = digests.get(key) ?? null;
+        if (!expected) {
+          const sel = selectBundleRules(deployed, { kind: s.kind, site: s.site });
+          expected = { sha: sha256(bundleManifest(sel)), count: sel.length };
+          digests.set(key, expected);
+        }
+      }
+      return {
+        sensorId: s.id,
+        sensorName: s.name,
+        kind: s.kind,
+        site: s.site,
+        engine,
+        expectedBundleSha256: expected?.sha ?? null,
+        expectedRuleCount: expected?.count ?? 0,
+        appliedBundleSha256: s.rulesBundleSha256,
+        appliedAt: s.rulesBundleAppliedAt?.toISOString() ?? null,
+        lastHeartbeatAt: s.lastHeartbeatAt?.toISOString() ?? null,
+        inSync:
+          expected !== null && s.rulesBundleSha256 !== null && s.rulesBundleSha256 === expected.sha,
+      };
     });
   }
 

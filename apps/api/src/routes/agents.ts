@@ -12,11 +12,13 @@ import {
   SensorIpsDirective,
   NeighborBatchResult,
   SensorHeartbeatRequest,
+  RuleBundle,
 } from '@noc/shared';
 import { AgentService } from '../agents/service';
 import type { Deps } from '../app-deps';
 import { AssetService } from '../assets/service';
-import { assetMetrics, assets } from '../db/schema';
+import { assetMetrics, assets, sensors } from '../db/schema';
+import { RuleService } from '../rules/service';
 import { requireSensor } from '../middleware/auth';
 import type { AppEnv } from '../middleware/context';
 import { rateLimit } from '../middleware/rate-limit';
@@ -32,6 +34,7 @@ const sensorAuth = [{ sensorCredential: [] }];
  * No user JWT is accepted here and sensor credentials are not accepted anywhere else.
  */
 export function agentRoutes(deps: Deps) {
+  const rules = new RuleService(deps.db, deps.audit);
   const { db, limiter } = deps;
   const service = new AgentService(db, deps.audit, new AssetService(db, deps.audit));
   const app = new OpenAPIHono<AppEnv>();
@@ -232,6 +235,54 @@ export function agentRoutes(deps: Deps) {
         ip: c.get('clientIp'),
       });
       return c.json(r, 202);
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: 'get',
+      path: '/rules-bundle',
+      tags: ['agents'],
+      middleware: [
+        requireSensor(),
+        rateLimit(limiter, {
+          name: 'agent-rules',
+          capacity: 30,
+          refillPerSecond: 0.5,
+          keyBy: 'sensor',
+        }),
+      ] as const,
+      security: sensorAuth,
+      responses: {
+        200: {
+          description:
+            'Deployed, enabled rules for this sensor (engine + site). ETag = bundle digest; send If-None-Match to get 304.',
+          content: { 'application/json': { schema: RuleBundle } },
+        },
+        304: { description: 'Bundle unchanged' },
+        401: err('Unauthenticated'),
+        404: err('This sensor kind consumes no registry rules'),
+        429: err('Rate limited'),
+      },
+    }),
+    async (c) => {
+      const s = c.get('sensor')!;
+      const [row] = await deps.db
+        .select({ site: sensors.site })
+        .from(sensors)
+        .where(eq(sensors.id, s.sensorId))
+        .limit(1);
+      const bundle = await rules.bundleFor({
+        id: s.sensorId,
+        kind: s.kind,
+        site: row?.site ?? null,
+      });
+      if (!bundle) throw new HTTPException(404, { message: 'No rule bundle for this sensor kind' });
+      const etag = `"${bundle.bundleSha256}"`;
+      c.header('etag', etag);
+      c.header('cache-control', 'no-store');
+      if (c.req.header('if-none-match') === etag) return c.body(null, 304);
+      return c.json(RuleBundle.parse(bundle), 200);
     },
   );
 

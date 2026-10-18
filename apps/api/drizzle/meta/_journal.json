@@ -113,6 +113,13 @@
       "when": 1792341763060,
       "tag": "0015_phase4_ips_watchdog",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1792344150812,
+      "tag": "0016_phase2_rule_bundles",
+      "breakpoints": true
     }
   ]
 }

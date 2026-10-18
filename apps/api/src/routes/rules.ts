@@ -6,14 +6,18 @@ import {
   DetectionRuleDetail,
   ImportRulesRequest,
   ImportRulesResponse,
+  RuleDeploymentState,
+  RuleLifecycleRequest,
   RuleLifecycleValues,
   RuleListQuery,
   RuleSourceValues,
   RuleStats,
+  RuleTargetsRequest,
 } from '@noc/shared';
 import type { Deps } from '../app-deps';
 import { detectionRules } from '../db/schema';
 import { requirePermission } from '../middleware/auth';
+import { siteScope } from '../middleware/scope';
 import type { AppEnv } from '../middleware/context';
 import { RuleService, type RuleActor } from '../rules/service';
 
@@ -42,6 +46,7 @@ export const toRule = (r: typeof detectionRules.$inferSelect) =>
     classtype: r.classtype,
     ruleSet: r.ruleSet,
     content: r.content,
+    sites: r.sites,
     importedBy: r.importedBy,
     createdAt: r.createdAt.toISOString(),
   });
@@ -187,6 +192,30 @@ export function ruleRoutes(deps: Deps) {
 
   app.openapi(
     createRoute({
+      method: 'get',
+      path: '/deployment',
+      tags: ['detection-rules'],
+      middleware: [requirePermission('detection_rules.read')] as const,
+      security: [{ bearerAuth: [] }],
+      responses: {
+        200: {
+          description:
+            'Per enabled sensor (inside the caller site scope): expected bundle digest vs the one the sensor acknowledged',
+          content: {
+            'application/json': {
+              schema: z.object({ items: z.array(RuleDeploymentState) }),
+            },
+          },
+        },
+        ...common,
+      },
+    }),
+    async (c) =>
+      c.json({ items: await service.deploymentState(siteScope(c.get('principal'))) }, 200),
+  );
+
+  app.openapi(
+    createRoute({
       method: 'post',
       path: '/import',
       tags: ['detection-rules'],
@@ -261,6 +290,57 @@ export function ruleRoutes(deps: Deps) {
   app.openapi(
     createRoute({
       method: 'post',
+      path: '/{id}/deploy',
+      tags: ['detection-rules'],
+      middleware: [requirePermission('detection_rules.deploy')] as const,
+      security: [{ bearerAuth: [] }],
+      request: { params: z.object({ id: z.uuid() }) },
+      responses: {
+        200: {
+          description: 'Deployed: sensors receive it on their next bundle fetch',
+          content: { 'application/json': { schema: DetectionRuleDetail } },
+        },
+        404: err('Not found'),
+        409: err('Not validated'),
+        ...common,
+      },
+    }),
+    async (c) => c.json(toRule(await service.deploy(c.req.valid('param').id, actorOf(c))), 200),
+  );
+
+  app.openapi(
+    createRoute({
+      method: 'put',
+      path: '/{id}/targets',
+      tags: ['detection-rules'],
+      middleware: [requirePermission('detection_rules.change')] as const,
+      security: [{ bearerAuth: [] }],
+      request: {
+        params: z.object({ id: z.uuid() }),
+        body: { content: { 'application/json': { schema: RuleTargetsRequest } }, required: true },
+      },
+      responses: {
+        200: {
+          description: 'Targets updated (empty = every sensor of the engine)',
+          content: { 'application/json': { schema: DetectionRuleDetail } },
+        },
+        400: err('Unknown site'),
+        404: err('Not found'),
+        ...common,
+      },
+    }),
+    async (c) =>
+      c.json(
+        toRule(
+          await service.setTargets(c.req.valid('param').id, c.req.valid('json').sites, actorOf(c)),
+        ),
+        200,
+      ),
+  );
+
+  app.openapi(
+    createRoute({
+      method: 'post',
       path: '/{id}/lifecycle',
       tags: ['detection-rules'],
       middleware: [requirePermission('detection_rules.change')] as const,
@@ -270,7 +350,7 @@ export function ruleRoutes(deps: Deps) {
         body: {
           content: {
             'application/json': {
-              schema: z.strictObject({ lifecycle: z.enum(['disabled', 'retired']) }),
+              schema: RuleLifecycleRequest,
             },
           },
           required: true,

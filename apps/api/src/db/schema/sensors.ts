@@ -27,6 +27,9 @@ export const sensors = pgTable(
     monitoredSegmentIds: uuid('monitored_segment_ids').array().notNull().default([]),
     engineVersion: text('engine_version'),
     ruleSetVersion: text('rule_set_version'),
+    /** Bundle digest the sensor last acknowledged (heartbeat), and when. */
+    rulesBundleSha256: text('rules_bundle_sha256'),
+    rulesBundleAppliedAt: ts('rules_bundle_applied_at'),
     enabled: boolean('enabled').notNull().default(false),
     /** Reported by the sensor's heartbeat; required (with health) before a policy can be enabled. */
     inlineCapable: boolean('inline_capable').notNull().default(false),

@@ -51,6 +51,8 @@ export const detectionRules = pgTable(
     ruleSet: text('rule_set'),
     /** The rule text as imported (bounded). Never contains payload data. */
     content: text('content'),
+    /** Deployment targets by site key; empty = every sensor of the matching engine. */
+    sites: text('sites').array().notNull().default([]),
     importedBy: uuid('imported_by'),
     createdAt: ts('created_at').notNull().defaultNow(),
   },

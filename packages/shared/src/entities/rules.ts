@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { Id, ShortText, Timestamp } from '../common';
+import { SiteKey } from './sites';
+import { Id, Sha256, ShortText, Timestamp } from '../common';
 import { RuleLifecycle, RuleSource, Severity } from '../enums';
 import { DetectionRule } from './secops';
 
@@ -28,6 +29,8 @@ export type ImportRulesResponse = z.infer<typeof ImportRulesResponse>;
 
 export const DetectionRuleDetail = DetectionRule.extend({
   enabled: z.boolean(),
+  /** Deployment targets by site key; empty = every sensor of the matching engine. */
+  sites: z.array(z.string().max(32)),
   action: z.string().max(16).nullable(),
   classtype: z.string().max(64).nullable(),
   ruleSet: z.string().max(256).nullable(),
@@ -36,6 +39,59 @@ export const DetectionRuleDetail = DetectionRule.extend({
   createdAt: Timestamp,
 });
 export type DetectionRuleDetail = z.infer<typeof DetectionRuleDetail>;
+
+export const RuleTargetsRequest = z.strictObject({
+  sites: z.array(SiteKey).max(64),
+});
+export type RuleTargetsRequest = z.infer<typeof RuleTargetsRequest>;
+
+export const RuleLifecycleRequest = z.strictObject({
+  lifecycle: z.enum(['disabled', 'retired']),
+});
+
+export const BundleEngineValues = ['suricata', 'zeek'] as const;
+export const BundleEngine = z.enum(BundleEngineValues);
+export type BundleEngine = z.infer<typeof BundleEngine>;
+
+export const RuleBundleEntry = z.strictObject({
+  id: Id,
+  source: RuleSource,
+  externalId: z.string().max(128),
+  revision: z.number().int().positive(),
+  contentSha256: Sha256,
+  content: z.string().max(8192),
+});
+export type RuleBundleEntry = z.infer<typeof RuleBundleEntry>;
+
+/** What a sensor fetches: the deployed, enabled rules targeted at its engine and site. */
+export const RuleBundle = z.strictObject({
+  engine: BundleEngine,
+  sensorId: Id,
+  site: z.string().max(32).nullable(),
+  generatedAt: Timestamp,
+  /** Digest of the canonical manifest (source, id, revision, content hash per rule). */
+  bundleSha256: Sha256,
+  ruleCount: z.number().int().nonnegative(),
+  rules: z.array(RuleBundleEntry).max(20000),
+});
+export type RuleBundle = z.infer<typeof RuleBundle>;
+
+/** Per-sensor deployment state: what the registry expects vs what the sensor last acknowledged. */
+export const RuleDeploymentState = z.strictObject({
+  sensorId: Id,
+  sensorName: ShortText,
+  kind: z.string().max(32),
+  site: z.string().max(32).nullable(),
+  engine: BundleEngine.nullable(),
+  expectedBundleSha256: Sha256.nullable(),
+  expectedRuleCount: z.number().int().nonnegative(),
+  appliedBundleSha256: Sha256.nullable(),
+  appliedAt: Timestamp.nullable(),
+  lastHeartbeatAt: Timestamp.nullable(),
+  /** True only when the sensor acknowledged exactly the current bundle. */
+  inSync: z.boolean(),
+});
+export type RuleDeploymentState = z.infer<typeof RuleDeploymentState>;
 
 export const RuleListQuery = z.strictObject({
   lifecycle: RuleLifecycle.optional(),

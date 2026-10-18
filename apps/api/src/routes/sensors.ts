@@ -38,6 +38,8 @@ export const toSensor = (s: typeof sensors.$inferSelect) =>
     monitoredSegmentIds: s.monitoredSegmentIds,
     engineVersion: s.engineVersion,
     ruleSetVersion: s.ruleSetVersion,
+    rulesBundleSha256: s.rulesBundleSha256,
+    rulesBundleAppliedAt: s.rulesBundleAppliedAt?.toISOString() ?? null,
     enabled: s.enabled,
     inlineCapable: s.inlineCapable,
     registeredAt: s.registeredAt.toISOString(),

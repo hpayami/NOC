@@ -173,6 +173,14 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   and a cross-instance alert stream bus (both degrade to per-instance behaviour if Redis is down).
   See `docs/phase7-progress.md` and `docs/deployment-profiles.md`.
 
+## Phase 2 rule deployment
+
+- Validated rules are deployed by a separate permission (`detection_rules.deploy`, SoD with
+  `detection_rules.change`), optionally targeted at sites; sensors fetch a per-engine, per-site
+  bundle (`GET /api/v1/agents/rules-bundle`, ETag-cached) and acknowledge its digest in their
+  heartbeat. `GET /api/v1/detection-rules/deployment` shows expected vs acknowledged per sensor —
+  in sync only on an exact match. See `docs/phase2-progress.md`.
+
 ## Phase 5 reports
 
 - `GET /api/v1/assessments/engagements/{id}/report` (JSON or Markdown): authorisation, scope,
@@ -218,7 +226,7 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
 
 ## Roadmap
 
-Phase 1 asset inventory & NOC → Phase 2 NIDS & event pipeline → Phase 3 SOC & IR → Phase 4 NIPS (policy plane delivered) → Phase 5 assessments (engagements, connect-level workers and reports delivered) → Phase 6 ML (advisory baseline delivered) → Phase 7 enterprise (SSO with logout, site scoping, shared rate limiting and alert bus delivered) &
+Phase 1 asset inventory & NOC → Phase 2 NIDS & event pipeline (rule bundles delivered) → Phase 3 SOC & IR → Phase 4 NIPS (policy plane delivered) → Phase 5 assessments (engagements, connect-level workers and reports delivered) → Phase 6 ML (advisory baseline delivered) → Phase 7 enterprise (SSO with logout, site scoping, shared rate limiting and alert bus delivered) &
 controlled response → Phase 5 authorized assessment → Phase 6 analytics → Phase 7 enterprise
 readiness. Details: `docs/phase-1-plan.md`, `docs/architecture.md`.
 
