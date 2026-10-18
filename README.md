@@ -85,6 +85,11 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   techniques; dry-run by default; the worker re-checks every target before connecting.
 - **SNMPv3 via collectors** (`/api/v1/collectors/snmp/snapshots`): interfaces, counters → metrics,
   LLDP neighbours → **verified** topology edges. Web **Topology** page.
+- **Host agents** (`/api/v1/agents/*`): operator-issued single-use enrolment token → one-time agent
+  credential (`X-Sensor-Credential`, hash-stored, separate from user auth) → heartbeat, inventory
+  (interfaces, listening services, hardware/OS), metrics, passive ARP/NDP/DHCP neighbours. Web
+  **Sensors & collectors** page. The agent binary is not part of this repository yet; the contract
+  and `ip neigh` / `dhcpd.leases` parsers are.
 
 ## What Phase 0 provides
 

@@ -10,6 +10,7 @@ import {
   AssetListQuery,
   AssetObservation,
   AssetPatchRequest,
+  AssetServiceRecord,
   AssetTimelineEntry,
   AssuranceStateValues,
   CoverageStateValues,
@@ -19,7 +20,13 @@ import {
 } from '@noc/shared';
 import type { Deps } from '../app-deps';
 import { AssetService } from '../assets/service';
-import { assetInterfaces, assetObservations, assets, auditEvents } from '../db/schema';
+import {
+  assetInterfaces,
+  assetObservations,
+  assetServices,
+  assets,
+  auditEvents,
+} from '../db/schema';
 import { requirePermission } from '../middleware/auth';
 import type { AppEnv } from '../middleware/context';
 import { rateLimit } from '../middleware/rate-limit';
@@ -318,9 +325,29 @@ export function assetRoutes(deps: Deps) {
       const [row] = await db.select().from(assets).where(eq(assets.id, id)).limit(1);
       if (!row) throw new HTTPException(404, { message: 'Asset not found' });
       const ifaces = await db.select().from(assetInterfaces).where(eq(assetInterfaces.assetId, id));
+      const svc = await db
+        .select()
+        .from(assetServices)
+        .where(eq(assetServices.assetId, id))
+        .orderBy(assetServices.proto, assetServices.port)
+        .limit(2000);
       const sensitive = c.get('principal')!.permissions.has('assets.read_sensitive');
       return c.json(
-        { asset: toPublicAsset(row, ifaces, sensitive), interfaces: ifaces.map(toPublicInterface) },
+        {
+          asset: toPublicAsset(row, ifaces, sensitive),
+          interfaces: ifaces.map(toPublicInterface),
+          services: svc.map((x) =>
+            AssetServiceRecord.parse({
+              proto: x.proto,
+              port: x.port,
+              address: x.address,
+              process: x.process,
+              source: x.source,
+              firstSeenAt: x.firstSeenAt.toISOString(),
+              lastSeenAt: x.lastSeenAt.toISOString(),
+            }),
+          ),
+        },
         200,
       );
     },

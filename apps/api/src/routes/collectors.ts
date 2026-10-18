@@ -1,7 +1,14 @@
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
 import { eq } from 'drizzle-orm';
-import { ApiError, SnmpSnapshot, SnmpSnapshotResult } from '@noc/shared';
+import {
+  ApiError,
+  NeighborBatch,
+  NeighborBatchResult,
+  SnmpSnapshot,
+  SnmpSnapshotResult,
+} from '@noc/shared';
+import { AgentService } from '../agents/service';
 import type { Deps } from '../app-deps';
 import { AssetService } from '../assets/service';
 import { applySnmpSnapshot } from '../collectors/snmp';
@@ -63,6 +70,48 @@ export function collectorRoutes(deps: Deps) {
         ip: c.get('clientIp'),
       });
       return c.json(SnmpSnapshotResult.parse(result), 202);
+    },
+  );
+
+  /** Collectors push ARP/NDP/DHCP neighbour batches gathered passively inside their segment. */
+  app.openapi(
+    createRoute({
+      method: 'post',
+      path: '/neighbors',
+      tags: ['collectors'],
+      middleware: [
+        requirePermission('monitoring.ingest'),
+        rateLimit(limiter, {
+          name: 'neighbors',
+          capacity: 120,
+          refillPerSecond: 2,
+          keyBy: 'ip+user',
+        }),
+      ] as const,
+      security: [{ bearerAuth: [] }],
+      request: {
+        body: { content: { 'application/json': { schema: NeighborBatch } }, required: true },
+      },
+      responses: {
+        202: {
+          description: 'Processed',
+          content: { 'application/json': { schema: NeighborBatchResult } },
+        },
+        400: err('Validation'),
+        401: err('Unauthenticated'),
+        403: err('Forbidden'),
+      },
+    }),
+    async (c) => {
+      const p = c.get('principal')!;
+      const agents = new AgentService(db, deps.audit, assetsSvc);
+      const r = await agents.applyNeighbors(c.req.valid('json'), `collector:${p.email}`, {
+        userId: p.userId,
+        label: p.email,
+        requestId: c.get('requestId'),
+        ip: c.get('clientIp'),
+      });
+      return c.json(r, 202);
     },
   );
 

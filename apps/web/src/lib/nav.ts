@@ -139,8 +139,8 @@ export const NAV: NavItem[] = [
     label: 'nav.sensors',
     capabilities: ['nids.suricata', 'nsm.zeek'],
     permission: 'sensors.read',
-    phase: 2,
-    implemented: false,
+    phase: 1,
+    implemented: true,
   },
   {
     slug: 'audit-logs',

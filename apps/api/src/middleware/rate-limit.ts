@@ -54,11 +54,21 @@ export class RateLimiter {
 
 export function rateLimit(
   limiter: RateLimiter,
-  opts: { name: string; capacity: number; refillPerSecond: number; keyBy?: 'ip' | 'ip+user' },
+  opts: {
+    name: string;
+    capacity: number;
+    refillPerSecond: number;
+    keyBy?: 'ip' | 'ip+user' | 'sensor';
+  },
 ): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     const ip = c.get('clientIp') ?? 'unknown';
-    const user = opts.keyBy === 'ip+user' ? (c.get('principal')?.userId ?? '-') : '';
+    const user =
+      opts.keyBy === 'ip+user'
+        ? (c.get('principal')?.userId ?? '-')
+        : opts.keyBy === 'sensor'
+          ? (c.get('sensor')?.sensorId ?? '-')
+          : '';
     const { allowed, retryAfterSeconds } = limiter.take(
       `${opts.name}:${ip}:${user}`,
       opts.capacity,

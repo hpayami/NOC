@@ -7,3 +7,4 @@ export * from './governance';
 export * from './audit';
 export * from './monitoring';
 export * from './discovery';
+export * from './services';

@@ -163,6 +163,22 @@ const fa = {
   'topology.kind': 'نوع',
   'topology.verification': 'وضعیت تأیید',
   'topology.evidence': 'شواهد',
+  'sensors.title': 'سنسورها و جمع‌آورها',
+  'sensors.subtitle':
+    'وضعیت از سن آخرین ضربان و گزارش خودِ سنسور مشتق می‌شود؛ شمارنده‌ها همان‌طور که گزارش شده‌اند نمایش داده می‌شوند.',
+  'sensors.empty': 'هیچ سنسور یا جمع‌آوری ثبت نشده است.',
+  'sensors.empty_hint':
+    'ثبت سنسور از طریق API (sensors.manage) انجام می‌شود؛ سپس توکن ثبت‌نام صادر و توسط عامل میزبان مبادله می‌شود.',
+  'sensors.name': 'نام',
+  'sensors.kind': 'نوع',
+  'sensors.mode': 'حالت',
+  'sensors.state': 'وضعیت',
+  'sensors.heartbeat': 'آخرین ضربان',
+  'sensors.host': 'دارایی میزبان',
+  'sensors.never': 'هرگز',
+  'sensors.issue_token': 'صدور توکن ثبت‌نام',
+  'sensors.token_once': 'این توکن فقط یک بار نمایش داده می‌شود و یک‌بارمصرف است.',
+  'sensors.token_expires': 'انقضا',
   'footer.notice': 'این سامانه فقط دارایی‌های دارای مجوز صریح را پایش و ارزیابی می‌کند.',
 } as const;
 
@@ -328,6 +344,22 @@ const en: Record<MessageKey, string> = {
   'topology.kind': 'Kind',
   'topology.verification': 'Verification',
   'topology.evidence': 'Evidence',
+  'sensors.title': 'Sensors & collectors',
+  'sensors.subtitle':
+    "State is derived from heartbeat age and the sensor's own report; counters are shown exactly as reported.",
+  'sensors.empty': 'No sensors or collectors registered.',
+  'sensors.empty_hint':
+    'Register a sensor via the API (sensors.manage), then issue an enrolment token for the host agent to exchange.',
+  'sensors.name': 'Name',
+  'sensors.kind': 'Kind',
+  'sensors.mode': 'Mode',
+  'sensors.state': 'State',
+  'sensors.heartbeat': 'Last heartbeat',
+  'sensors.host': 'Host asset',
+  'sensors.never': 'never',
+  'sensors.issue_token': 'Issue enrolment token',
+  'sensors.token_once': 'Shown once and single-use.',
+  'sensors.token_expires': 'Expires',
   'footer.notice': 'This platform monitors and assesses explicitly authorized assets only.',
 };
 

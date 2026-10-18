@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AssetServiceRecord } from './entities/agents';
 import { Id, PageQuery, ShortText, Timestamp } from './common';
 import {
   AssetClass,
@@ -140,7 +141,11 @@ export const AssetListQuery = PageQuery.extend({
 });
 export type AssetListQuery = z.infer<typeof AssetListQuery>;
 
-export const AssetDetail = z.strictObject({ asset: Asset, interfaces: z.array(AssetInterface) });
+export const AssetDetail = z.strictObject({
+  asset: Asset,
+  interfaces: z.array(AssetInterface),
+  services: z.array(AssetServiceRecord),
+});
 export type AssetDetail = z.infer<typeof AssetDetail>;
 
 /** Operator-maintained metadata only. Identity fields (hostname, addresses) come from observations. */

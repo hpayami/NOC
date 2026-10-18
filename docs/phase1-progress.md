@@ -115,3 +115,37 @@ web 4; e2e covers the Topology page.
 
 Host agent, passive ARP/DHCP/DNS connectors, flow-derived inferred edges, threshold alerting and
 escalation (Phase 2 alert queue), discovery/maintenance UI forms (API-only today), retention jobs.
+
+## Slice 4 — host-agent foundation, passive neighbour ingestion, sensors page (2026-10-18)
+
+**Delivered**
+
+- Sensor credentials: an operator mints a single-use, 24 h **enrolment token**
+  (`POST /api/v1/sensors/:id/enrolment-token`, `sensors.manage`); the agent exchanges it once at
+  `POST /api/v1/agents/enrol` for a long-lived credential (`<sensorId>.<secret>`, only its SHA-256
+  stored; the token is burned; every attempt audited). Agent endpoints accept **only**
+  `X-Sensor-Credential`; user JWTs are refused there and sensor credentials unlock nothing else.
+- `POST /api/v1/agents/heartbeat | inventory | metrics | neighbors` with per-sensor rate limits.
+  Inventory → observation anchored on the agent id (OS, arch, RAM, vendor/model, disks, boot time),
+  interfaces per name (loopback dropped), **listening services** (`asset_services`, replaced per
+  source with first-seen preserved), host asset linked to the sensor, coverage → `partial`.
+- Passive discovery: ARP/NDP/DHCP neighbour batches from agents or collectors
+  (`POST /api/v1/collectors/neighbors`, `monitoring.ingest`) → one observation each
+  (`arp_neighbor` / `dhcp_lease`); loopback and MAC-less/hostname-less entries skipped.
+  `packages/shared/src/parsers/neighbors.ts`: `parseIpNeigh`, `parseDhcpdLeases` for the agent.
+- Schema (`0003_phase1_agents`): `asset_services`; `sensors.enrolment_token_hash/expires_at/enrolled_at`.
+- Asset detail now returns `services`. Web **Sensors & collectors** page with one-time enrolment
+  token issuance. Capabilities `asset.discovery.passive`, `noc.health_monitoring` → `available`.
+
+**Verified**
+
+API: 5 agent tests (token RBAC/single-use/audit outcomes, credential vs JWT separation, inventory
+create + re-send with service replacement and first-seen retention, metrics gated on inventory,
+neighbour batch with no IP-only merge + collector path). Shared: 2 parser tests. Totals: shared 77,
+API 65, web 4; e2e covers the Sensors page.
+
+**Phase 1 remaining**
+
+Flow-derived inferred edges (needs the Phase 2 flow collector), threshold alerts/escalation
+(Phase 2 alert queue), discovery/maintenance UI forms, retention jobs, the agent binary itself
+(the API contract and parsers are in place; the collector process is a separate deliverable).

@@ -4,10 +4,11 @@ import { cors } from 'hono/cors';
 import { secureHeaders } from 'hono/secure-headers';
 import { HTTPException } from 'hono/http-exception';
 import type { Deps } from './app-deps';
-import { authenticate } from './middleware/auth';
+import { authenticate, authenticateSensor } from './middleware/auth';
 import { requestContext, type AppEnv } from './middleware/context';
 import { errorBody, notFound, onError } from './middleware/errors';
 import { rateLimit } from './middleware/rate-limit';
+import { agentRoutes } from './routes/agents';
 import { assetRoutes } from './routes/assets';
 import { authRoutes } from './routes/auth';
 import { collectorRoutes } from './routes/collectors';
@@ -78,6 +79,7 @@ export function createApp(deps: Deps) {
     });
   });
   app.use('*', authenticate(db, tokens));
+  app.use('/api/v1/agents/*', authenticateSensor(db));
   app.use(
     '/api/*',
     rateLimit(limiter, { name: 'api', capacity: 300, refillPerSecond: 5, keyBy: 'ip+user' }),
@@ -94,9 +96,15 @@ export function createApp(deps: Deps) {
   app.route('/api/v1/sensors', sensorRoutes(deps));
   app.route('/api/v1/discovery', discoveryRoutes(deps).app);
   app.route('/api/v1/collectors', collectorRoutes(deps));
+  app.route('/api/v1/agents', agentRoutes(deps).app);
   app.route('/api/v1/platform', platformRoutes(deps));
   app.route('/api/v1/audit', auditRoutes(deps));
 
+  app.openAPIRegistry.registerComponent('securitySchemes', 'sensorCredential', {
+    type: 'apiKey',
+    in: 'header',
+    name: 'X-Sensor-Credential',
+  });
   app.openAPIRegistry.registerComponent('securitySchemes', 'bearerAuth', {
     type: 'http',
     scheme: 'bearer',

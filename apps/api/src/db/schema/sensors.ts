@@ -28,8 +28,12 @@ export const sensors = pgTable(
     engineVersion: text('engine_version'),
     ruleSetVersion: text('rule_set_version'),
     enabled: boolean('enabled').notNull().default(false),
-    /** SHA-256 of the sensor's enrolment credential; the credential itself is never stored. */
+    /** SHA-256 of the sensor's long-lived credential; the credential itself is never stored. */
     credentialHash: text('credential_hash'),
+    /** SHA-256 of a single-use enrolment token issued by an operator; cleared on enrolment. */
+    enrolmentTokenHash: text('enrolment_token_hash'),
+    enrolmentExpiresAt: ts('enrolment_expires_at'),
+    enrolledAt: ts('enrolled_at'),
     registeredAt: ts('registered_at').notNull().defaultNow(),
     lastHeartbeatAt: ts('last_heartbeat_at'),
   },

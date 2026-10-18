@@ -8,10 +8,13 @@ import {
   SensorHealth,
   SensorHeartbeatRequest,
   SensorStatus,
+  EnrolmentTokenResponse,
 } from '@noc/shared';
 import type { Deps } from '../app-deps';
 import type { Db, DbTx } from '../db/client';
 import { sensorHealth, sensors } from '../db/schema';
+import { AgentService } from '../agents/service';
+import { AssetService } from '../assets/service';
 import { requirePermission } from '../middleware/auth';
 import type { AppEnv } from '../middleware/context';
 import { rateLimit } from '../middleware/rate-limit';
@@ -267,6 +270,38 @@ export function sensorRoutes(deps: Deps) {
         return u!;
       });
       return c.json(await toSensorStatus(db, updated, now), 202);
+    },
+  );
+
+  /** Operator mints a single-use enrolment token; the agent exchanges it for its credential. */
+  app.openapi(
+    createRoute({
+      method: 'post',
+      path: '/{id}/enrolment-token',
+      tags: ['sensors'],
+      middleware: [requirePermission('sensors.manage')] as const,
+      security: [{ bearerAuth: [] }],
+      request: { params: idParam },
+      responses: {
+        201: {
+          description: 'Token (shown once)',
+          content: { 'application/json': { schema: EnrolmentTokenResponse } },
+        },
+        404: err('Not found'),
+        ...common,
+      },
+    }),
+    async (c) => {
+      const { id } = c.req.valid('param');
+      const p = c.get('principal')!;
+      const agents = new AgentService(db, audit, new AssetService(db, audit));
+      const r = await agents.createEnrolmentToken(id, {
+        userId: p.userId,
+        label: p.email,
+        requestId: c.get('requestId'),
+        ip: c.get('clientIp'),
+      });
+      return c.json(EnrolmentTokenResponse.parse(r), 201);
     },
   );
 

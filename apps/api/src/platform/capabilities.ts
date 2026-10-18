@@ -26,9 +26,10 @@ export const CAPABILITIES: CapabilityStatus[] = [
   },
   {
     id: 'asset.discovery.passive',
-    state: 'not_implemented',
+    state: 'available',
     phase: 1,
-    reason: 'Requires authorized scope and a passive observer',
+    reason:
+      'ARP/NDP/DHCP neighbour batches pushed by enrolled agents and collectors; no in-platform sniffing',
   },
   {
     id: 'asset.discovery.active',
@@ -39,10 +40,10 @@ export const CAPABILITIES: CapabilityStatus[] = [
   },
   {
     id: 'noc.health_monitoring',
-    state: 'degraded',
+    state: 'available',
     phase: 1,
     reason:
-      'TCP availability checks, collector heartbeats, maintenance windows, metrics and SNMPv3 snapshots via collectors; host agent pending',
+      'TCP checks, collector heartbeats, maintenance windows, metrics, SNMPv3 snapshots and enrolled host agents (inventory, services, metrics)',
   },
   {
     id: 'network.topology',

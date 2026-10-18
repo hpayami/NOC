@@ -73,6 +73,11 @@ test.describe('Phase 0 shell', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('توپولوژی شبکه');
     await expect(page.getByText('هنوز هیچ ارتباطی ثبت نشده است.')).toBeVisible();
 
+    // Sensors & collectors: registry with derived state; empty until something is registered.
+    await page.goto('/sensors');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('سنسورها و جمع‌آورها');
+    await expect(page.getByText('هیچ سنسور یا جمع‌آوری ثبت نشده است.')).toBeVisible();
+
     // Unimplemented workspace shows real capability state, never sample data.
     await page.goto('/nids');
     await expect(page.getByText('این بخش هنوز عملیاتی نیست')).toBeVisible();

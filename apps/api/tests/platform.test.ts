@@ -45,7 +45,9 @@ describe('platform endpoints', () => {
       'auth.rbac',
       'audit.tamper_evident',
       'asset.inventory',
+      'asset.discovery.passive',
       'asset.discovery.active',
+      'noc.health_monitoring',
       'network.topology',
     ]);
     expect(body.capabilities.find((c) => c.id === 'nips.inline_prevention')?.state).toBe(

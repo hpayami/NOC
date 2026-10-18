@@ -14,12 +14,20 @@ export interface Principal {
   tokenJti: string;
 }
 
+export interface SensorPrincipal {
+  sensorId: string;
+  name: string;
+  kind: string;
+  hostAssetId: string | null;
+}
+
 export type AppEnv = {
   Variables: {
     requestId: string;
     log: Logger;
     clientIp: string | null;
     principal: Principal | null;
+    sensor: SensorPrincipal | null;
   };
 };
 
@@ -50,6 +58,7 @@ export function requestContext(env: Env, baseLogger: Logger): MiddlewareHandler<
     c.set('clientIp', clientIp);
     c.set('log', log);
     c.set('principal', null);
+    c.set('sensor', null);
     c.header('X-Request-Id', requestId);
 
     const started = process.hrtime.bigint();
