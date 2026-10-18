@@ -1,6 +1,7 @@
 import type { Logger } from 'pino';
 import type { AuditService } from './audit/service';
 import type { OidcService } from './auth/oidc';
+import type { OperationsService } from './operations/service';
 import type { AlertBusLike } from './events/bus';
 import type { Env } from './config/env';
 import type { IpsService } from './ips/service';
@@ -24,4 +25,5 @@ export interface Deps {
   ips: IpsService;
   ml: MlService;
   oidc: OidcService;
+  operations: OperationsService;
 }

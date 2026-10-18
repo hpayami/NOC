@@ -1,7 +1,10 @@
-import { PlatformStatus, type CapabilityState } from '@noc/shared';
+import Link from 'next/link';
+import { PlatformConditions, PlatformStatus, type CapabilityState } from '@noc/shared';
 import { getI18n } from '@/i18n/server';
 import { apiFetch } from '@/lib/api';
+import { getSessionUser } from '@/lib/session';
 import { CapabilityBadge } from '@/components/status-badges';
+import { ConditionsPanel } from '@/components/conditions-panel';
 import type { MessageKey } from '@/i18n/messages';
 
 export const dynamic = 'force-dynamic';
@@ -16,7 +19,12 @@ const CAP_LABEL: Record<CapabilityState, MessageKey> = {
 
 export default async function CommandCenter() {
   const { t, locale } = await getI18n();
-  const status = await apiFetch('/api/v1/platform/status', PlatformStatus);
+  const [status, conditions, me] = await Promise.all([
+    apiFetch('/api/v1/platform/status', PlatformStatus),
+    apiFetch('/api/v1/operations/conditions', PlatformConditions),
+    getSessionUser(),
+  ]);
+  const canManage = (me?.permissions ?? []).includes('notifications.manage');
   const fmt = new Intl.NumberFormat(locale === 'fa' ? 'fa-IR' : 'en-US');
   const when = new Intl.DateTimeFormat(locale === 'fa' ? 'fa-IR' : 'en-GB', {
     dateStyle: 'medium',
@@ -50,6 +58,33 @@ export default async function CommandCenter() {
           </div>
         </dl>
       </header>
+
+      <section aria-labelledby="conditions">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 id="conditions" className="text-lg font-medium">
+            {t('cc.conditions')}
+          </h2>
+          <Link href="/operations" className="text-xs text-muted underline">
+            {canManage ? t('cc.operations_link') : t('ops.title')}
+          </Link>
+        </div>
+        <ConditionsPanel
+          data={conditions}
+          labels={{
+            none: t('cc.conditions_none'),
+            checks: t('cc.checks'),
+            ok: t('cc.checks_ok'),
+            failing: t('cc.checks_failing'),
+            unavailable: t('cc.checks_unavailable'),
+            open: t('cond.open'),
+            severity: {
+              critical: t('cond.critical'),
+              warning: t('cond.warning'),
+              info: t('cond.info'),
+            },
+          }}
+        />
+      </section>
 
       <section aria-labelledby="metrics">
         <h2 id="metrics" className="mb-3 text-lg font-medium">

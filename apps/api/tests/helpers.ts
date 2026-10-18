@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import { createApp, type App } from '../src/app';
 import { AuditService } from '../src/audit/service';
 import { OidcService, oidcConfigFromEnv } from '../src/auth/oidc';
+import { OperationsService } from '../src/operations/service';
 import { AlertBus } from '../src/events/bus';
 import { loadEnv, type Env } from '../src/config/env';
 import { createDb, type DbHandle } from '../src/db/client';
@@ -33,6 +34,7 @@ export interface Harness {
   env: Env;
   limiter: RateLimiter;
   ips: IpsService;
+  operations: OperationsService;
   close: () => Promise<void>;
 }
 
@@ -55,6 +57,18 @@ export async function createHarness(
   const limiter = new RateLimiter();
   const audit = new AuditService(handle.db);
   const ips = new IpsService(handle.db, audit);
+  const ml = new MlService(handle.db, audit, pino({ level: 'silent' }), {
+    url: env.ANALYSIS_URL,
+    token: env.ANALYSIS_INTERNAL_TOKEN ?? null,
+    timeoutMs: 1500,
+    probeTtlMs: 0,
+  });
+  const operations = new OperationsService(handle.db, audit, ml, {
+    version: env.APP_VERSION,
+    remindHours: 6,
+    logger: pino({ level: 'silent' }),
+    timeoutMs: 2000,
+  });
   const app = createApp({
     env,
     db: handle.db,
@@ -66,20 +80,16 @@ export async function createHarness(
     bus: new AlertBus(),
     retention: new RetentionService(handle.db, audit, { batchSize: 2, maxBatchesPerDataset: 3 }),
     ips,
-    ml: new MlService(handle.db, audit, pino({ level: 'silent' }), {
-      url: env.ANALYSIS_URL,
-      token: env.ANALYSIS_INTERNAL_TOKEN ?? null,
-      timeoutMs: 1500,
-      probeTtlMs: 0,
-    }),
+    ml,
     oidc: new OidcService(handle.db, audit, oidcConfigFromEnv(env)),
+    operations,
   });
-  return { app, handle, env, limiter, ips, close: () => handle.close() };
+  return { app, handle, env, limiter, ips, operations, close: () => handle.close() };
 }
 
 export async function resetDatabase(handle: DbHandle): Promise<void> {
   await handle.db.execute(
-    sql`truncate table users, refresh_tokens, audit_events, assets, sensors, alerts, incidents, retention_policies, response_actions, approvals, ips_policies, assessment_engagements, vulnerability_findings, ml_inference_results, oidc_states, oidc_logout_tokens, sites, vulnerability_catalog restart identity cascade`,
+    sql`truncate table users, refresh_tokens, audit_events, assets, sensors, alerts, incidents, retention_policies, response_actions, approvals, ips_policies, assessment_engagements, vulnerability_findings, ml_inference_results, oidc_states, oidc_logout_tokens, sites, vulnerability_catalog, notification_channels restart identity cascade`,
   );
 }
 

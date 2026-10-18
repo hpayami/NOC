@@ -190,3 +190,72 @@ Front-channel logout (iframe-based) is not implemented; a `sid`-only logout leav
 access tokens valid until they expire (default 15 minutes) because the platform never bumps a
 whole user's `token_version` for one IdP session — use `sub` tokens from the IdP when immediate
 revocation is required.
+
+## Slice 5 — Platform conditions and signed webhook notifications (2026-10-18)
+
+**Delivered**
+
+- **Conditions** (`packages/shared/src/rules/conditions.ts`, pure): one evaluation over records
+  the platform already holds, returning the conditions an operator should act on **and every
+  check that ran** with `ok` / `failing` / `unavailable` — a quiet dashboard says "checked,
+  nothing found", not "nothing checked". Checks: `sensors_silent` (critical; enabled sensor with
+  no heartbeat within `IPS_HEARTBEAT_MAX_AGE_SECONDS`), `sensors_unhealthy` (warning; last
+  reported health not `healthy`), `rule_bundles_out_of_sync` (warning; rule-consuming sensor not
+  acknowledging the current bundle digest), `ips_policies_expiring` (warning; enabled inline
+  policy within 2 h of its TTL), `ips_auto_disabled` (critical; watchdog returned a sensor to
+  detect-only in the last 24 h), `analysis_reachable` (warning when down; `unavailable` when the
+  probe itself could not run), `approvals_pending` (info; IPS policies, engagements, response
+  actions awaiting a decision), `cves_uncatalogued` (info), `assets_unmonitored` (warning when
+  more than half the inventory has no detection coverage — "unknown, not low"). Each condition
+  carries a count and the workspace path to act on it. `GET /api/v1/operations/conditions`
+  (`platform.status.read`).
+- **Webhook channels** (`notifications.manage`, held by `platform_admin` only): name, http(s)
+  URL, write-only shared secret (≥ 16 chars, stored, never returned, never logged), minimum
+  severity, enabled flag. `POST /channels`, `PATCH /channels/{id}`, `GET /channels`,
+  `POST /channels/{id}/test`, `GET /deliveries`. Every delivery body is signed
+  `x-noc-signature: sha256=<HMAC-SHA256 hex>` with `x-noc-event` and `x-noc-timestamp`; the
+  payload (`WebhookPayload`) is `{ event: raised|resolved|test, condition, platform, at }`.
+  Redirects are not followed; 5 s timeout; the request is bounded to what the condition says.
+- **Delivery semantics** (`OperationsService.notify`, `NotificationScheduler`,
+  `NOTIFICATIONS_ENABLED` / `NOTIFICATIONS_INTERVAL_SECONDS` default 120 /
+  `NOTIFICATIONS_REMIND_HOURS` default 6): per channel and condition the platform keeps a
+  fingerprint (`id:severity:count`); a channel is told once when a condition appears or changes,
+  reminded after the quiet period while it persists, and told once when it resolves. A failed
+  delivery is recorded (`notification_deliveries`, channel `lastStatus`/`lastError`) and leaves
+  the state untouched, so it is retried on the next cycle — never silently dropped, never
+  duplicated on success. Channel create/update/test are audited; deliveries are their own ledger.
+- Capability `ops.notifications`: `not_configured` without channels, `available` with enabled
+  channels, `degraded` when a channel's last delivery failed.
+- Web: the command centre shows the conditions panel (severity, detail, link to the workspace,
+  checks tally) and links to `/operations`, which repeats the panel and — for
+  `notifications.manage` — lists channels (state, last attempt and error), creates channels,
+  sends test deliveries, enables/disables, and shows recent deliveries. Others see the panel and
+  an explicit note that channel management is withheld by permission.
+- Schema (`0018_phase7_notifications`): `notification_channels`, `notification_states` (PK
+  channel + condition), `notification_deliveries`.
+
+**Verified**
+
+Shared (6): every check reported when quiet; silent/stale/degraded/disabled sensors and an
+out-of-sync bundle ordered by severity with disabled sensors excluded; expiring vs later policies,
+recent vs old watchdog disables, operator disables ignored; unreachable analysis vs probe not run;
+info conditions, the >50 % unmonitored rule (exactly half and no assets are not warnings);
+fingerprint ignores wording. API (4, with a local HTTP receiver): empty platform raises only the
+genuinely unreachable analysis service; an enrolled sensor that never reports raises
+`sensors_silent` + `rule_bundles_out_of_sync`, a heartbeat with the bundle digest clears both, a
+degraded heartbeat raises `sensors_unhealthy`; channel CRUD under `notifications.manage` (403 for
+a blue-team engineer), ftp URL and short secret rejected, secret absent from every response, 404
+on unknown ids, audit entries; one signed raise (HMAC verified against the received body,
+timestamp header, payload parses), quiet on repeat, reminder after 7 h, `resolved` after the
+heartbeat, a 500 from the receiver recorded as failed with the channel and capability degraded,
+retried and sent once the receiver recovers, delivery ledger in order, disabled channel receives
+nothing; test deliveries signed and audited, an unreachable receiver reported as failed with the
+error. Totals: shared 119, API 106 (25 files), web 4, pytest 8 + agent 7; e2e 5/5.
+
+**Known limitations**
+
+Webhook is the only channel kind (e-mail/chat connectors would be adapters over the same state
+machine); the notifier runs on every instance unless disabled on all but one (states are keyed
+per channel, so two instances would at worst send one duplicate per condition change); there is
+no per-site routing of conditions; the receiver must verify the signature itself (a sample is in
+the README).

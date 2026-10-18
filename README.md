@@ -197,6 +197,25 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   entries; known-exploited and CVSS ≥ 9 raise the explained asset risk. Enrichment is by CVE id
   only, never by product name. Capability `vuln.catalog` reports the state.
 
+## Platform conditions and notifications
+
+- `GET /api/v1/operations/conditions` derives what an operator should act on from real records
+  (silent or unhealthy sensors, rule bundles not acknowledged, inline prevention expiring or
+  dropped by the watchdog, analysis service unreachable, approvals waiting, uncatalogued CVEs,
+  an unmonitored majority of assets) and reports **every check** as ok / failing / unavailable.
+  Shown on the command centre and `/operations`.
+- Webhook channels (`notifications.manage`): each delivery is signed with HMAC-SHA256 over the
+  raw body (`x-noc-signature: sha256=<hex>`, plus `x-noc-event`, `x-noc-timestamp`); a channel is
+  told once when a condition appears or changes, reminded after `NOTIFICATIONS_REMIND_HOURS`,
+  and told once when it resolves; failed deliveries are recorded and retried. Secrets are
+  write-only. Verify on the receiver, for example:
+
+  ```js
+  const expected = 'sha256=' + crypto.createHmac('sha256', SECRET).update(rawBody).digest('hex');
+  if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(req.headers['x-noc-signature'])))
+    reject();
+  ```
+
 ## Phase 2 rule deployment
 
 - Validated rules are deployed by a separate permission (`detection_rules.deploy`, SoD with

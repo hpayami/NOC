@@ -127,6 +127,13 @@
       "when": 1792350019195,
       "tag": "0017_phase5_vuln_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792350976702,
+      "tag": "0018_phase7_notifications",
+      "breakpoints": true
     }
   ]
 }

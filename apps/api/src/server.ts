@@ -14,6 +14,7 @@ import { createMetrics } from './platform/metrics';
 import { syncRbacCatalog } from './platform/seed';
 import { IpsService, IpsWatchdog } from './ips/service';
 import { MlService } from './ml/service';
+import { NotificationScheduler, OperationsService } from './operations/service';
 import { RetentionScheduler, RetentionService } from './retention/service';
 import { TokenService } from './security/tokens';
 
@@ -40,6 +41,10 @@ async function main() {
   const audit = new AuditService(handle.db);
   const retention = new RetentionService(handle.db, audit);
   await retention.ensureDefaults();
+  const ml = new MlService(handle.db, audit, logger, {
+    url: env.ANALYSIS_URL,
+    token: env.ANALYSIS_INTERNAL_TOKEN ?? null,
+  });
   const deps = {
     env,
     db: handle.db,
@@ -51,11 +56,13 @@ async function main() {
     bus: env.REDIS_URL ? new RedisAlertBus(env.REDIS_URL, logger) : new AlertBus(),
     retention,
     ips: new IpsService(handle.db, audit),
-    ml: new MlService(handle.db, audit, logger, {
-      url: env.ANALYSIS_URL,
-      token: env.ANALYSIS_INTERNAL_TOKEN ?? null,
-    }),
+    ml,
     oidc: new OidcService(handle.db, audit, oidcConfigFromEnv(env)),
+    operations: new OperationsService(handle.db, audit, ml, {
+      version: env.APP_VERSION,
+      remindHours: env.NOTIFICATIONS_REMIND_HOURS,
+      logger,
+    }),
   };
   const app = createApp(deps);
 
@@ -75,6 +82,11 @@ async function main() {
     logger,
   });
   if (env.IPS_WATCHDOG_ENABLED) ipsWatchdog.start();
+  const notifications = new NotificationScheduler(deps.operations, {
+    intervalSeconds: env.NOTIFICATIONS_INTERVAL_SECONDS,
+    logger,
+  });
+  if (env.NOTIFICATIONS_ENABLED) notifications.start();
 
   const server = serve({ fetch: app.fetch, hostname: env.API_HOST, port: env.API_PORT }, (info) => {
     logger.info({ host: info.address, port: info.port, env: env.NODE_ENV }, 'noc-api listening');
@@ -85,6 +97,7 @@ async function main() {
     scheduler.stop();
     retentionScheduler.stop();
     ipsWatchdog.stop();
+    notifications.stop();
     if (deps.bus instanceof RedisAlertBus) deps.bus.close();
     if (deps.limiter instanceof RedisRateLimiter) deps.limiter.close();
     server.close();

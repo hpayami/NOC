@@ -60,6 +60,7 @@ export const PERMISSION_CATALOG = {
   'audit.verify': 'Verify audit-trail integrity',
   'ml.read': 'View ML analytics',
   'ml.manage': 'Manage ML models',
+  'notifications.manage': 'Manage notification channels for platform conditions',
 } as const;
 
 export type Permission = keyof typeof PERMISSION_CATALOG;
@@ -98,6 +99,7 @@ export const ROLE_DEFINITIONS: Record<RoleKey, RoleDefinition> = {
     permissions: [
       ...READ_BASE,
       'platform.metrics.read',
+      'notifications.manage',
       'users.read',
       'users.manage',
       'users.assign_roles',

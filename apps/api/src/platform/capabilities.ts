@@ -154,6 +154,13 @@ export const CAPABILITIES: CapabilityStatus[] = [
       'No vulnerability catalogue imported; findings carry only the CVEs their source supplied (import NVD 2.0 / CISA KEV via /api/v1/vulnerabilities/import)',
   },
   {
+    id: 'ops.notifications',
+    state: 'not_configured',
+    phase: 7,
+    reason:
+      'No notification channel configured; platform conditions are visible on the command centre only',
+  },
+  {
     id: 'ml.analytics',
     state: 'not_configured',
     phase: 6,
@@ -176,6 +183,7 @@ export function resolveCapabilities(input: {
   ml?: { reachable: boolean; models: number; results: number; detail: string | null };
   sso?: { enabled: boolean; issuer: string | null; jit: boolean };
   vulnCatalog?: { total: number; knownExploited: number; lastImportAt: string | null };
+  notifications?: { enabled: number; failed: number };
   now: Date;
 }): CapabilityStatus[] {
   const engines: Record<string, { sensors: SensorState; label: string }> = {
@@ -189,6 +197,15 @@ export function resolveCapabilities(input: {
         ...cap,
         state: 'available',
         reason: `OIDC login against ${input.sso.issuer} (PKCE, RS256 ID tokens verified locally, JIT provisioning ${input.sso.jit ? 'on' : 'off'}, no e-mail auto-link unless enabled)`,
+      };
+    }
+    if (cap.id === 'ops.notifications') {
+      const n = input.notifications;
+      if (!n || n.enabled === 0) return cap;
+      return {
+        ...cap,
+        state: n.failed > 0 ? 'degraded' : 'available',
+        reason: `${n.enabled} enabled webhook channel(s); ${n.failed} with a failed last delivery. Signed (HMAC-SHA256), de-duplicated per condition, reminders after the quiet period`,
       };
     }
     if (cap.id === 'vuln.catalog') {

@@ -68,6 +68,10 @@ const EnvSchema = z
     /** Inline-prevention watchdog: returns sensors to detect-only when they stop qualifying. */
     IPS_WATCHDOG_ENABLED: bool.default(true),
     IPS_WATCHDOG_INTERVAL_SECONDS: z.coerce.number().int().min(10).max(600).default(60),
+    /** Platform-condition notifications (signed webhooks). */
+    NOTIFICATIONS_ENABLED: bool.default(true),
+    NOTIFICATIONS_INTERVAL_SECONDS: z.coerce.number().int().min(30).max(3600).default(120),
+    NOTIFICATIONS_REMIND_HOURS: z.coerce.number().int().min(1).max(168).default(6),
     RETENTION_ENABLED: bool.default(true),
     RETENTION_INTERVAL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
     APP_VERSION: z.string().default('0.1.0-phase1'),

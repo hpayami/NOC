@@ -148,6 +148,15 @@ test.describe('Phase 0 shell', () => {
     await page.goto('/assets/graph');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('گراف وابستگی دارایی‌ها');
     await expect(page.getByText('دارایی‌ای در محدودهٔ شما ثبت نشده است.')).toBeVisible();
+    // Platform conditions: every check reports; an analyst sees them but cannot manage channels.
+    await page.goto('/command-center');
+    await expect(page.getByRole('heading', { name: 'شرایط نیازمند اقدام' })).toBeVisible();
+    await expect(page.getByTestId('checks-summary')).toContainText('بررسی‌ها');
+    await page.goto('/operations');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('عملیات پلتفرم و اعلان‌ها');
+    await expect(
+      page.getByText('مدیریت کانال‌ها به مجوز notifications.manage نیاز دارد'),
+    ).toBeVisible();
     // Unimplemented workspace shows real capability state, never sample data.
     await page.goto('/threat-intel');
     await expect(page.getByText('این بخش هنوز عملیاتی نیست')).toBeVisible();

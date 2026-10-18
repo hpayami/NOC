@@ -249,6 +249,10 @@ export function platformRoutes(deps: Deps) {
             jit: deps.oidc.config?.jit ?? false,
           },
           vulnCatalog: await new VulnerabilityService(deps.db, deps.audit).stats(),
+          notifications: await deps.operations.listChannels().then((cs) => ({
+            enabled: cs.filter((c) => c.enabled).length,
+            failed: cs.filter((c) => c.enabled && c.lastStatus === 'failed').length,
+          })),
           ml: await deps.ml.status().then((s) => ({
             reachable: s.reachable,
             models: s.models.length,
