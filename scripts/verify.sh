@@ -16,6 +16,8 @@ step "build (api, web)" pnpm -r build
 if [[ -x services/analysis/.venv/bin/pytest ]]; then
   step "analysis: ruff" services/analysis/.venv/bin/ruff check services/analysis
   step "analysis: pytest" bash -c 'cd services/analysis && .venv/bin/pytest -q'
+  step "sensor-agent: ruff" services/analysis/.venv/bin/ruff check services/sensor-agent
+  step "sensor-agent: pytest" bash -c 'cd services/sensor-agent && ../analysis/.venv/bin/pytest -q'
 else
   warn "analysis venv missing; skipping python checks"
 fi

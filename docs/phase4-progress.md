@@ -93,3 +93,33 @@ API 99, web 4, pytest 8; e2e 5/5.
 **Still not delivered**
 
 Sensor-side agent applying the directive, bypass/fail-open hardware checks, policy diff/preview.
+
+## Slice 3 — Reference sensor agent (2026-10-18)
+
+**Delivered**
+
+`services/sensor-agent` (Python, standard library only, pytest-covered): enrolment with a
+one-time token (credential stored `0600`), heartbeats built from `suricatasc` (`uptime`,
+`version`, `dump-counters`; unreachable engine → `failed`, missing counters → `null`), rule-bundle
+sync with `If-None-Match` and atomic file replacement, `reload-rules` through the command socket
+— the running digest is reported **only after a successful reload** — inline-prevention
+directive application through an operator hook with acknowledgement of exactly what happened,
+and EVE shipping with a checkpoint that advances only on `202` (partial lines held, rotation
+detected). `inlineCapable` is advertised only when the host is declared capable **and** a hook is
+configured; an `ips` directive without both is acknowledged as _not applied_ with the reason, so
+the platform keeps the sensor in detect-only. Dockerfile provided; `scripts/verify.sh` runs the
+agent's ruff and pytest.
+
+**Verified**
+
+Seven agent tests against an in-process mock of the sensor API and a fake `suricatasc`: single
+enrolment with persisted credential and permissions, heartbeat content, bundle write/reload/ETag
+304 and digest reporting, state survival across restarts, reload failure never claiming the new
+digest, inline directive refused without capability/hook and applied with a hook (failure
+reported with stderr), non-fail-open directive refused, engine down reported `failed`, EVE
+batching/checkpoint/retry-without-skip/rotation, bad token handled.
+
+**Still not delivered**
+
+Automatic NFQUEUE/AF_PACKET provisioning (deliberately operator-owned), bypass-hardware checks,
+Zeek agent (the bundle endpoint serves Zeek scripts; applying them is engine-specific work).

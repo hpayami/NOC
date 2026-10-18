@@ -18,6 +18,12 @@ and the structural shape that fits; numbers are starting points for a sizing exe
 **Management node**: CPU/RAM headroom for PG, API concurrency, WebSocket fan-out (later), background
 jobs; disk latency (PG WAL), retention of transactional tables, backup window.
 
+**Sensor agent**: `services/sensor-agent` runs beside Suricata (host service or sidecar with the
+command socket, rules directory and `eve.json` mounted). It needs outbound HTTPS to the API only.
+Inline prevention additionally needs an operator-provided apply hook and `SENSOR_INLINE_CAPABLE=true`;
+without both the agent acknowledges inline directives as not applied and the platform keeps the
+sensor detect-only.
+
 **Network sensor**: NIC speed and offload support, driver/kernel compatibility, capture method
 (AF_PACKET v3 / AF_XDP), per-core throughput, RAM for flow tables, NUMA locality, storage throughput
 for EVE/PCAP, measured packet-drop counters at target load.

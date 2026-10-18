@@ -181,6 +181,14 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   open service_, findings with CVE/CWE and recent alerts (each behind its permission). An
   unmonitored asset without evidence is reported `unknown`, never safe. Web page `/assets/graph`.
 
+## Reference sensor agent
+
+- `services/sensor-agent`: standard-library Python agent for Suricata hosts — enrol, heartbeat
+  from `suricatasc`, rule-bundle sync (ETag, atomic write, reload; digest reported only after a
+  successful reload), inline-prevention directive via an operator hook with honest
+  acknowledgement, EVE shipping with a checkpoint that moves only on acceptance. See
+  `services/sensor-agent/README.md`.
+
 ## Phase 2 rule deployment
 
 - Validated rules are deployed by a separate permission (`detection_rules.deploy`, SoD with
