@@ -7,9 +7,17 @@ export const AuthProviders = z.strictObject({
     displayName: z.string().max(64),
     /** Just-in-time provisioning of first-time SSO users (roles from the configured claim map). */
     jitProvisioning: z.boolean(),
+    /** Logout also ends the IdP session (RP-initiated logout) when a post-logout URI is configured. */
+    rpInitiatedLogout: z.boolean(),
   }),
 });
 export type AuthProviders = z.infer<typeof AuthProviders>;
+
+/** Result of `POST /auth/logout`: where the browser should go next, if the IdP session must end too. */
+export const LogoutResponse = z.strictObject({
+  idpLogoutUrl: z.string().url().nullable(),
+});
+export type LogoutResponse = z.infer<typeof LogoutResponse>;
 
 export const OidcStartResponse = z.strictObject({
   authorizationUrl: z.string().url(),

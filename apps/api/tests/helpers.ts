@@ -77,7 +77,7 @@ export async function createHarness(
 
 export async function resetDatabase(handle: DbHandle): Promise<void> {
   await handle.db.execute(
-    sql`truncate table users, refresh_tokens, audit_events, assets, sensors, alerts, incidents, retention_policies, response_actions, approvals, ips_policies, assessment_engagements, vulnerability_findings, ml_inference_results, oidc_states, sites restart identity cascade`,
+    sql`truncate table users, refresh_tokens, audit_events, assets, sensors, alerts, incidents, retention_policies, response_actions, approvals, ips_policies, assessment_engagements, vulnerability_findings, ml_inference_results, oidc_states, oidc_logout_tokens, sites restart identity cascade`,
   );
 }
 

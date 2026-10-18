@@ -61,6 +61,8 @@ const EnvSchema = z
     OIDC_ALLOW_JIT: bool.default(true),
     OIDC_AUTO_LINK_BY_EMAIL: bool.default(false),
     OIDC_DISPLAY_NAME: z.string().max(64).default('Single sign-on'),
+    /** Enables RP-initiated logout: where the IdP sends the browser after ending its session. */
+    OIDC_POST_LOGOUT_REDIRECT_URI: z.string().url().optional(),
     /** Shared rate-limit store for multi-instance deployments; unset = per-instance limits. */
     REDIS_URL: z.string().url().optional(),
     RETENTION_ENABLED: bool.default(true),

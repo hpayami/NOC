@@ -53,6 +53,7 @@ function mockIdp() {
             authorization_endpoint: `${issuer}/authorize`,
             token_endpoint: `${issuer}/token`,
             jwks_uri: `${issuer}/jwks`,
+            end_session_endpoint: `${issuer}/logout`,
           }),
         );
         return;
@@ -96,6 +97,13 @@ function mockIdp() {
     server,
     privateKey,
     rogue,
+    /** Mints a token the IdP would send out of band (back-channel logout). */
+    sign(claims: Record<string, unknown>, over: { signer?: KeyObject; alg?: string } = {}) {
+      return sign(claims, over.signer ?? privateKey, over.alg ?? 'RS256');
+    },
+    get issuer() {
+      return issuer;
+    },
     start: () =>
       new Promise<string>((r) =>
         server.listen(0, '127.0.0.1', () =>
@@ -157,6 +165,7 @@ beforeAll(async () => {
     }),
     OIDC_DEFAULT_ROLES: 'read_only_auditor',
     OIDC_DISPLAY_NAME: 'Corp IdP',
+    OIDC_POST_LOGOUT_REDIRECT_URI: 'http://localhost:3000/login?reason=signed_out',
   });
 });
 afterAll(async () => {
@@ -174,7 +183,12 @@ describe('OIDC single sign-on', () => {
     const providers = await jsonOf(await h.app.request('/api/v1/auth/providers'));
     expect(providers).toEqual({
       local: true,
-      oidc: { enabled: true, displayName: 'Corp IdP', jitProvisioning: true },
+      oidc: {
+        enabled: true,
+        displayName: 'Corp IdP',
+        jitProvisioning: true,
+        rpInitiatedLogout: true,
+      },
     });
     const admin = await loginAdmin(h);
     const ps = PlatformStatus.parse(
@@ -382,5 +396,127 @@ describe('OIDC single sign-on', () => {
     } finally {
       await plain.close();
     }
+  });
+
+  it('ends the IdP session on logout and honours back-channel logout by sid and by sub, refusing forged or replayed tokens', async () => {
+    const ssoLogin = async (sid: string) => {
+      const s = await start(h.app);
+      const a = idp.authorize(s.authorizationUrl, {
+        sub: 'u-9',
+        email: 'nina@corp.test',
+        groups: ['sec-analysts'],
+        sid,
+      });
+      const res = await callback(h.app, a);
+      expect(res.status).toBe(200);
+      const body = TokenResponse.parse(await jsonOf(res));
+      const refresh = /noc_refresh=([^;]+)/.exec(res.headers.get('set-cookie') ?? '')?.[1];
+      expect(refresh).toBeTruthy();
+      return { access: body.accessToken, refresh: refresh! };
+    };
+    const me = (token: string) => h.app.request('/api/v1/auth/me', { headers: authed(token) });
+    const refreshWith = (refresh: string) =>
+      h.app.request('/api/v1/auth/refresh', {
+        method: 'POST',
+        headers: { cookie: `noc_refresh=${refresh}`, origin: 'http://localhost:3000' },
+      });
+    const backchannel = (token: string) =>
+      h.app.request('/api/v1/auth/oidc/backchannel-logout', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ logout_token: token }).toString(),
+      });
+    const logoutClaims = (over: Record<string, unknown>) => {
+      const now = Math.floor(Date.now() / 1000);
+      return {
+        iss: idp.issuer,
+        aud: 'noc-web',
+        iat: now,
+        exp: now + 120,
+        jti: b64(randomBytes(12)),
+        events: { 'http://schemas.openid.net/event/backchannel-logout': {} },
+        ...over,
+      };
+    };
+
+    // RP-initiated logout: local session dies and the browser is sent to the IdP end-session endpoint.
+    const first = await ssoLogin('sid-1');
+    const out = await h.app.request('/api/v1/auth/logout', {
+      method: 'POST',
+      headers: { cookie: `noc_refresh=${first.refresh}`, origin: 'http://localhost:3000' },
+    });
+    expect(out.status).toBe(200);
+    const url = new URL((await jsonOf(out)).idpLogoutUrl);
+    expect(url.origin + url.pathname).toBe(`${idp.issuer}/logout`);
+    expect(url.searchParams.get('client_id')).toBe('noc-web');
+    expect(url.searchParams.get('post_logout_redirect_uri')).toBe(
+      'http://localhost:3000/login?reason=signed_out',
+    );
+    expect(url.searchParams.has('id_token_hint')).toBe(false); // ID tokens are never stored
+    expect((await refreshWith(first.refresh)).status).toBe(401);
+    // A local account's logout carries no IdP URL.
+    const admin = await loginAdmin(h);
+    const localOut = await h.app.request('/api/v1/auth/logout', {
+      method: 'POST',
+      headers: { cookie: `noc_refresh=${admin.refresh}`, origin: 'http://localhost:3000' },
+    });
+    expect(await jsonOf(localOut)).toEqual({ idpLogoutUrl: null });
+
+    // Back-channel logout by sid: that IdP session's refresh family dies; another session survives.
+    const a = await ssoLogin('sid-a');
+    const b = await ssoLogin('sid-b');
+    expect((await backchannel(idp.sign(logoutClaims({ sid: 'sid-a' })))).status).toBe(200);
+    expect((await refreshWith(a.refresh)).status).toBe(401);
+    expect((await refreshWith(b.refresh)).status).toBe(200);
+    expect((await me(b.access)).status).toBe(200);
+
+    // Refusals: forged key, wrong audience, nonce present, missing event, stale, no sub/sid, alg=none.
+    for (const [token, why] of [
+      [idp.sign(logoutClaims({ sid: 'sid-b' }), { signer: idp.rogue }), 'signature'],
+      [idp.sign(logoutClaims({ sid: 'sid-b', aud: 'other' })), 'audience'],
+      [idp.sign(logoutClaims({ sid: 'sid-b', nonce: 'n' })), 'nonce'],
+      [idp.sign(logoutClaims({ sid: 'sid-b', events: {} })), 'event'],
+      [idp.sign(logoutClaims({ sid: 'sid-b', iat: Math.floor(Date.now() / 1000) - 3600 })), 'old'],
+      [idp.sign(logoutClaims({})), 'sub nor sid'],
+      [idp.sign(logoutClaims({ sid: 'sid-b' }), { alg: 'none' }), 'RS256'],
+    ] as const) {
+      const r = await backchannel(token);
+      expect(r.status, why).toBe(400);
+      expect((await jsonOf(r)).error.message).toMatch(new RegExp(why));
+    }
+    expect((await me(b.access)).status).toBe(200); // nothing above touched the live session
+
+    // Back-channel logout by sub: every session of the subject ends, access tokens included.
+    const subToken = idp.sign(logoutClaims({ sub: 'u-9' }));
+    expect((await backchannel(subToken)).status).toBe(200);
+    expect((await me(b.access)).status).toBe(401);
+    expect((await refreshWith(b.refresh)).status).toBe(401);
+    // Replay of the same token (same jti) is refused.
+    const replay = await backchannel(subToken);
+    expect(replay.status).toBe(400);
+    expect((await jsonOf(replay)).error.message).toMatch(/already processed/);
+    // Unknown subject: processed (200), nothing to revoke, still audited.
+    expect((await backchannel(idp.sign(logoutClaims({ sub: 'nobody' })))).status).toBe(200);
+    // Password login was never possible for this account; the user can sign in again via SSO.
+    expect((await ssoLogin('sid-c')).access).toBeTruthy();
+
+    const admin2 = await loginAdmin(h);
+    const audit = await jsonOf(
+      await h.app.request('/api/v1/audit?limit=100', { headers: authed(admin2.token) }),
+    );
+    const bc = audit.items.filter(
+      (e: { action: string }) => e.action === 'auth.oidc_backchannel_logout',
+    );
+    expect(bc.map((e: { metadata: { matched: string } }) => e.metadata.matched).sort()).toEqual([
+      'none',
+      'sid',
+      'sub',
+    ]);
+    expect(
+      audit.items.some(
+        (e: { action: string; metadata: { idpLogout?: boolean } }) =>
+          e.action === 'auth.logout' && e.metadata.idpLogout === true,
+      ),
+    ).toBe(true);
   });
 });

@@ -116,7 +116,8 @@ describe('shared alert bus', () => {
       JSON.stringify({ origin: 'x', event: { kind: 'created', alertId: 'nope' } }),
     );
     await raw.command('PUBLISH', 'test:alerts', JSON.stringify({ origin: 'y', event: ev }));
-    for (let i = 0; i < 50 && gotB.length < 2; i++) await new Promise((r) => setTimeout(r, 50));
+    for (let i = 0; i < 50 && (gotB.length < 2 || gotA.length < 2); i++)
+      await new Promise((r) => setTimeout(r, 50));
     expect(gotB).toEqual([ev.alertId, ev.alertId]);
     expect(gotA).toEqual([ev.alertId, ev.alertId]);
     raw.close();

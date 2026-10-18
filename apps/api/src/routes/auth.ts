@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import {
   ApiError,
   AuthProviders,
+  LogoutResponse,
   LoginRequest,
   OidcCallbackRequest,
   OidcStartResponse,
@@ -59,6 +60,7 @@ export function authRoutes(deps: Deps) {
     familyId: string,
     ip: string | null,
     ua: string | null,
+    externalSid: string | null = null,
   ) {
     const access = await tokens.issueAccessToken({ userId, roles, tokenVersion });
     const refresh = generateRefreshToken();
@@ -71,6 +73,7 @@ export function authRoutes(deps: Deps) {
         expiresAt: new Date(Date.now() + env.AUTH_REFRESH_TTL_SECONDS * 1000),
         createdIp: ip,
         userAgent: ua?.slice(0, 512) ?? null,
+        externalSid,
       })
       .returning({ id: refreshTokens.id });
     return { access, refresh, refreshRowId: row!.id };
@@ -269,6 +272,7 @@ export function authRoutes(deps: Deps) {
           expiresAt: new Date(Date.now() + env.AUTH_REFRESH_TTL_SECONDS * 1000),
           createdIp: ip,
           userAgent: c.req.header('user-agent')?.slice(0, 512) ?? null,
+          externalSid: row.externalSid,
         })
         .returning({ id: refreshTokens.id });
       await tx
@@ -305,15 +309,27 @@ export function authRoutes(deps: Deps) {
     method: 'post',
     path: '/logout',
     tags: ['auth'],
-    responses: { 204: { description: 'Session revoked' } },
+    responses: {
+      200: {
+        description:
+          'Session revoked; for SSO accounts with RP-initiated logout configured, the IdP end-session URL to send the browser to',
+        content: { 'application/json': { schema: LogoutResponse } },
+      },
+    },
   });
   app.openapi(logout, async (c) => {
     assertTrustedOrigin(c);
     const raw = getCookie(c, REFRESH_COOKIE);
+    let idpLogoutUrl: string | null = null;
     if (raw && raw.length <= 128) {
       const [row] = await db
-        .select({ familyId: refreshTokens.familyId, userId: refreshTokens.userId })
+        .select({
+          familyId: refreshTokens.familyId,
+          userId: refreshTokens.userId,
+          authProvider: users.authProvider,
+        })
         .from(refreshTokens)
+        .innerJoin(users, eq(users.id, refreshTokens.userId))
         .where(eq(refreshTokens.tokenHash, hashRefreshToken(raw)))
         .limit(1);
       if (row) {
@@ -321,6 +337,7 @@ export function authRoutes(deps: Deps) {
           .update(refreshTokens)
           .set({ revokedAt: new Date() })
           .where(and(eq(refreshTokens.familyId, row.familyId), isNull(refreshTokens.revokedAt)));
+        if (row.authProvider === 'oidc') idpLogoutUrl = await oidc.endSessionUrl();
         await audit.record({
           actorId: row.userId,
           actorLabel: row.userId,
@@ -328,11 +345,12 @@ export function authRoutes(deps: Deps) {
           outcome: 'success',
           requestId: c.get('requestId'),
           sourceIp: c.get('clientIp'),
+          metadata: { idpLogout: idpLogoutUrl !== null },
         });
       }
     }
     deleteCookie(c, REFRESH_COOKIE, { path: REFRESH_PATH });
-    return c.body(null, 204);
+    return c.json(LogoutResponse.parse({ idpLogoutUrl }), 200);
   });
 
   // ---- POST /logout-all (bumps token version: every access + refresh token dies) -----------
@@ -482,6 +500,7 @@ export function authRoutes(deps: Deps) {
             enabled: oidc.enabled,
             displayName: oidc.config?.displayName ?? '',
             jitProvisioning: oidc.config?.jit ?? false,
+            rpInitiatedLogout: Boolean(oidc.config?.postLogoutRedirectUri),
           },
         }),
         200,
@@ -549,7 +568,7 @@ export function authRoutes(deps: Deps) {
       assertTrustedOrigin(c);
       const ip = c.get('clientIp');
       const requestId = c.get('requestId');
-      const { user, roles, provisioned } = await oidc.callback(c.req.valid('json'), {
+      const { user, roles, provisioned, sid } = await oidc.callback(c.req.valid('json'), {
         ip,
         requestId,
       });
@@ -568,6 +587,7 @@ export function authRoutes(deps: Deps) {
         randomUUID(),
         ip,
         c.req.header('user-agent') ?? null,
+        sid,
       );
       await audit.record({
         actorId: user.id,
@@ -588,6 +608,47 @@ export function authRoutes(deps: Deps) {
         },
         200,
       );
+    },
+  );
+
+  // Back-channel logout (OpenID Connect Back-Channel Logout 1.0): server-to-server from the IdP,
+  // so no browser origin check; form-encoded `logout_token`. 200 = processed (even when nothing
+  // matched), 400 = token refused, 503 = SSO not configured.
+  app.openapi(
+    createRoute({
+      method: 'post',
+      path: '/oidc/backchannel-logout',
+      tags: ['auth'],
+      middleware: [
+        rateLimit(limiter, { name: 'oidc_backchannel', capacity: 60, refillPerSecond: 2 }),
+      ] as const,
+      request: {
+        body: {
+          content: {
+            'application/x-www-form-urlencoded': {
+              schema: z.object({ logout_token: z.string().min(1).max(8192) }),
+            },
+          },
+          required: true,
+        },
+      },
+      responses: {
+        200: { description: 'Logout token processed' },
+        503: {
+          description: 'SSO not configured or IdP unreachable',
+          content: { 'application/json': { schema: ApiError } },
+        },
+        ...errorResponses,
+      },
+    }),
+    async (c) => {
+      const { logout_token: token } = c.req.valid('form');
+      await oidc.backchannelLogout(token, {
+        ip: c.get('clientIp'),
+        requestId: c.get('requestId'),
+      });
+      c.header('cache-control', 'no-store');
+      return c.body(null, 200);
     },
   );
 

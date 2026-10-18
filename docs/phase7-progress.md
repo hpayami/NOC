@@ -148,3 +148,45 @@ unowned address still creates. Totals: shared 99, API 97, web 4, pytest 8; e2e 5
 Assessment engagements and detection rules are still global (engagement scope is CIDR-based and
 authorised per engagement, not per site); the bus does not replay missed events (reconnecting
 clients re-fetch the queue); OIDC logout / back-channel logout remain open.
+
+## Slice 4 — OIDC logout: RP-initiated and back-channel (2026-10-18)
+
+**Delivered**
+
+- **RP-initiated logout** (OpenID Connect RP-Initiated Logout 1.0). `POST /api/v1/auth/logout`
+  now answers `{ idpLogoutUrl }`: for an SSO account, when `OIDC_POST_LOGOUT_REDIRECT_URI` is set
+  and the IdP publishes `end_session_endpoint`, the URL carries `client_id` and
+  `post_logout_redirect_uri`; the web logout route sends the browser there after clearing the
+  local session. ID tokens are never stored, so no `id_token_hint` is sent. Local accounts, an
+  unconfigured post-logout URI or an unreachable IdP give `null` and a plain local logout.
+  `GET /auth/providers` advertises `rpInitiatedLogout`.
+- **Back-channel logout** (OpenID Connect Back-Channel Logout 1.0).
+  `POST /api/v1/auth/oidc/backchannel-logout` (form `logout_token`, server-to-server, no browser
+  origin check, rate limited) verifies the token with the same RS256/JWKS path as ID tokens plus
+  the logout-token rules: issuer, audience (+`azp`), `iat` not older than 5 minutes, the
+  `http://schemas.openid.net/event/backchannel-logout` event, a `jti`, `sub` and/or `sid`, and
+  **no `nonce`**. `jti` values are stored until expiry (`oidc_logout_tokens`); a replay is 400.
+  Effect: `sid` → the refresh-token families of that IdP session end (the `sid` claim is stored on
+  the SSO session's refresh tokens and carried across rotation); `sub` → every session of the
+  subject ends and `token_version` is bumped so outstanding access tokens die immediately.
+  Audited as `auth.oidc_backchannel_logout` with what matched. An unknown subject is still 200
+  (processed, nothing to revoke) so the IdP does not retry forever.
+- Schema (`0014_phase7_oidc_logout`): `refresh_tokens.external_sid` + index,
+  `oidc_logout_tokens`.
+
+**Verified**
+
+API: SSO login with `sid` → logout returns the end-session URL with the right parameters and no
+`id_token_hint`, refresh refused afterwards; local account logout → `null`. Two SSO sessions:
+back-channel by `sid` ends one and leaves the other usable; refusals for a rogue key, wrong
+audience, nonce present, missing event, stale `iat`, neither `sub` nor `sid`, `alg=none` — and the
+live session is untouched by any of them; back-channel by `sub` ends the remaining session
+including its access token; replay 400; unknown subject 200; the user can sign in again; audit
+trail shows `none` / `sid` / `sub` matches and the IdP-logout flag.
+
+**Known limitations**
+
+Front-channel logout (iframe-based) is not implemented; a `sid`-only logout leaves already-issued
+access tokens valid until they expire (default 15 minutes) because the platform never bumps a
+whole user's `token_version` for one IdP session — use `sub` tokens from the IdP when immediate
+revocation is required.

@@ -56,6 +56,13 @@ export const oidcStates = pgTable('oidc_states', {
   consumedAt: ts('consumed_at'),
 });
 
+/** Replay protection for OIDC back-channel logout tokens (`jti`), kept until the token's expiry. */
+export const oidcLogoutTokens = pgTable('oidc_logout_tokens', {
+  jti: text('jti').primaryKey(),
+  receivedAt: ts('received_at').notNull().defaultNow(),
+  expiresAt: ts('expires_at').notNull(),
+});
+
 export const roles = pgTable('roles', {
   key: text('key').primaryKey(),
   name: text('name').notNull(),
@@ -119,11 +126,14 @@ export const refreshTokens = pgTable(
     replacedBy: uuid('replaced_by'),
     createdIp: inet('created_ip'),
     userAgent: text('user_agent'),
+    /** IdP session id (`sid` claim) for SSO sessions: lets back-channel logout end this session. */
+    externalSid: text('external_sid'),
   },
   (t) => [
     uniqueIndex('refresh_tokens_hash_idx').on(t.tokenHash),
     index('refresh_tokens_family_idx').on(t.familyId),
     index('refresh_tokens_user_expires_idx').on(t.userId, t.expiresAt),
+    index('refresh_tokens_external_sid_idx').on(t.externalSid),
   ],
 );
 
