@@ -154,6 +154,14 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   results, batch scoring with reported skips. Nothing acts on a score automatically — the test
   suite asserts it. Web **ML Analytics** page. See `docs/phase6-progress.md`.
 
+## Phase 7 progress (enterprise hardening)
+
+- OIDC single sign-on (authorization code + PKCE): PKCE state kept server-side and single-use,
+  RS256 ID tokens verified locally against the IdP's JWKS (issuer, audience, expiry, nonce),
+  JIT provisioning with a group → role map, roles re-synced on login, and **no e-mail auto-link**
+  to local accounts unless explicitly enabled. Enabled by setting `OIDC_ISSUER`, `OIDC_CLIENT_ID`
+  and `OIDC_REDIRECT_URI`; the login page then offers SSO. See `docs/phase7-progress.md`.
+
 ## What Phase 0 provides
 
 - **Shared contracts** for every domain entity (users, assets, observations, segments, topology,
@@ -191,7 +199,7 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
 
 ## Roadmap
 
-Phase 1 asset inventory & NOC → Phase 2 NIDS & event pipeline → Phase 3 SOC & IR → Phase 4 NIPS (policy plane delivered) → Phase 5 assessments (engagements + connect-level workers delivered) → Phase 6 ML (advisory baseline delivered) &
+Phase 1 asset inventory & NOC → Phase 2 NIDS & event pipeline → Phase 3 SOC & IR → Phase 4 NIPS (policy plane delivered) → Phase 5 assessments (engagements + connect-level workers delivered) → Phase 6 ML (advisory baseline delivered) → Phase 7 enterprise (SSO delivered; tenant scoping and HA next) &
 controlled response → Phase 5 authorized assessment → Phase 6 analytics → Phase 7 enterprise
 readiness. Details: `docs/phase-1-plan.md`, `docs/architecture.md`.
 

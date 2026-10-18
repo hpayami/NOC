@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server';
 import pino from 'pino';
 import { createApp } from './app';
 import { AuditService } from './audit/service';
+import { OidcService, oidcConfigFromEnv } from './auth/oidc';
 import { loadEnv } from './config/env';
 import { createDb } from './db/client';
 import { RateLimiter } from './middleware/rate-limit';
@@ -52,6 +53,7 @@ async function main() {
       url: env.ANALYSIS_URL,
       token: env.ANALYSIS_INTERNAL_TOKEN ?? null,
     }),
+    oidc: new OidcService(handle.db, audit, oidcConfigFromEnv(env)),
   };
   const app = createApp(deps);
 

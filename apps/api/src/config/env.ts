@@ -48,6 +48,19 @@ const EnvSchema = z
     /** Analysis service (advisory ML). Unreachable is a reported state, not a startup failure. */
     ANALYSIS_URL: z.string().url().default('http://127.0.0.1:8000'),
     ANALYSIS_INTERNAL_TOKEN: z.string().min(24).optional(),
+    /** OIDC SSO (authorization code + PKCE). Enabled only when issuer, client id and redirect URI are all set. */
+    OIDC_ISSUER: z.string().url().optional(),
+    OIDC_CLIENT_ID: z.string().min(1).optional(),
+    OIDC_CLIENT_SECRET: z.string().min(8).optional(),
+    OIDC_REDIRECT_URI: z.string().url().optional(),
+    OIDC_SCOPES: z.string().default('openid profile email'),
+    OIDC_ROLE_CLAIM: z.string().default('groups'),
+    /** JSON object: IdP group/role value → platform role key. */
+    OIDC_ROLE_MAP: z.string().default('{}'),
+    OIDC_DEFAULT_ROLES: z.string().optional(),
+    OIDC_ALLOW_JIT: bool.default(true),
+    OIDC_AUTO_LINK_BY_EMAIL: bool.default(false),
+    OIDC_DISPLAY_NAME: z.string().max(64).default('Single sign-on'),
     RETENTION_ENABLED: bool.default(true),
     RETENTION_INTERVAL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
     APP_VERSION: z.string().default('0.1.0-phase1'),

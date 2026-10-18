@@ -2,7 +2,16 @@ import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { ApiError, LoginRequest, SessionUser, TokenResponse, type RoleKey } from '@noc/shared';
+import {
+  ApiError,
+  AuthProviders,
+  LoginRequest,
+  OidcCallbackRequest,
+  OidcStartResponse,
+  SessionUser,
+  TokenResponse,
+  type RoleKey,
+} from '@noc/shared';
 import type { Deps } from '../app-deps';
 import { refreshTokens, users } from '../db/schema';
 import { loadPrincipal, requireAuth, unauthorized } from '../middleware/auth';
@@ -21,7 +30,7 @@ const errorResponses = {
 };
 
 export function authRoutes(deps: Deps) {
-  const { db, env, tokens, audit, limiter, metrics } = deps;
+  const { db, env, tokens, audit, limiter, metrics, oidc } = deps;
   const app = new OpenAPIHono<AppEnv>();
 
   function setRefreshCookie(c: Parameters<typeof setCookie>[0], token: string) {
@@ -122,6 +131,7 @@ export function authRoutes(deps: Deps) {
       await verifyAgainstDummy(password);
       return deny('unknown_user');
     }
+    if (u.authProvider !== 'local') return deny('sso_account', u.id);
     if (u.status !== 'active') return deny('account_' + u.status, u.id);
     if (u.lockedUntil && u.lockedUntil.getTime() > Date.now()) return deny('locked', u.id);
 
@@ -449,6 +459,136 @@ export function authRoutes(deps: Deps) {
     deleteCookie(c, REFRESH_COOKIE, { path: REFRESH_PATH });
     return c.body(null, 204);
   });
+
+  // ---- SSO (OIDC) ---------------------------------------------------------------------------
+  app.openapi(
+    createRoute({
+      method: 'get',
+      path: '/providers',
+      tags: ['auth'],
+      responses: {
+        200: {
+          description: 'Which login methods this deployment offers',
+          content: { 'application/json': { schema: AuthProviders } },
+        },
+      },
+    }),
+    (c) =>
+      c.json(
+        AuthProviders.parse({
+          local: true,
+          oidc: {
+            enabled: oidc.enabled,
+            displayName: oidc.config?.displayName ?? '',
+            jitProvisioning: oidc.config?.jit ?? false,
+          },
+        }),
+        200,
+      ),
+  );
+
+  app.openapi(
+    createRoute({
+      method: 'post',
+      path: '/oidc/start',
+      tags: ['auth'],
+      middleware: [
+        rateLimit(limiter, { name: 'oidc', capacity: 20, refillPerSecond: 0.5 }),
+      ] as const,
+      responses: {
+        200: {
+          description: 'Authorization URL with PKCE; state is single-use and expires in 10 minutes',
+          content: { 'application/json': { schema: OidcStartResponse } },
+        },
+        503: {
+          description: 'SSO not configured or IdP unreachable',
+          content: { 'application/json': { schema: ApiError } },
+        },
+        ...errorResponses,
+      },
+    }),
+    async (c) => {
+      assertTrustedOrigin(c);
+      return c.json(OidcStartResponse.parse(await oidc.start()), 200);
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: 'post',
+      path: '/oidc/callback',
+      tags: ['auth'],
+      middleware: [
+        rateLimit(limiter, { name: 'oidc', capacity: 20, refillPerSecond: 0.5 }),
+      ] as const,
+      request: {
+        body: { content: { 'application/json': { schema: OidcCallbackRequest } }, required: true },
+      },
+      responses: {
+        200: {
+          description: 'Session issued',
+          content: { 'application/json': { schema: TokenResponse } },
+        },
+        403: {
+          description: 'Identity refused (inactive, provisioning disabled)',
+          content: { 'application/json': { schema: ApiError } },
+        },
+        409: {
+          description: 'E-mail collision with a local account',
+          content: { 'application/json': { schema: ApiError } },
+        },
+        503: {
+          description: 'SSO not configured or IdP unreachable',
+          content: { 'application/json': { schema: ApiError } },
+        },
+        ...errorResponses,
+      },
+    }),
+    async (c) => {
+      assertTrustedOrigin(c);
+      const ip = c.get('clientIp');
+      const requestId = c.get('requestId');
+      const { user, roles, provisioned } = await oidc.callback(c.req.valid('json'), {
+        ip,
+        requestId,
+      });
+      const [fresh] = await db
+        .select({ tokenVersion: users.tokenVersion })
+        .from(users)
+        .where(eq(users.id, user.id))
+        .limit(1);
+      const tokenVersion = fresh?.tokenVersion ?? user.tokenVersion;
+      const principal = await loadPrincipal(db, user.id, tokenVersion, 'login');
+      if (!principal) throw unauthorized('Account unavailable');
+      const { access, refresh } = await issueSession(
+        user.id,
+        roles,
+        tokenVersion,
+        randomUUID(),
+        ip,
+        c.req.header('user-agent') ?? null,
+      );
+      await audit.record({
+        actorId: user.id,
+        actorLabel: user.email,
+        action: 'auth.oidc_login',
+        outcome: 'success',
+        requestId,
+        sourceIp: ip,
+        metadata: { provisioned, roles },
+      });
+      setRefreshCookie(c, refresh.token);
+      return c.json(
+        {
+          accessToken: access.token,
+          tokenType: 'Bearer' as const,
+          expiresInSeconds: access.expiresIn,
+          user: sessionUserOf(principal),
+        },
+        200,
+      );
+    },
+  );
 
   return app;
 }

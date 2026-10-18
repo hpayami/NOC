@@ -29,15 +29,30 @@ export const users = pgTable(
     failedLoginCount: integer('failed_login_count').notNull().default(0),
     lockedUntil: ts('locked_until'),
     mfaEnrolled: boolean('mfa_enrolled').notNull().default(false),
+    /** 'local' (password) or 'oidc'. SSO accounts hold an unusable password hash. */
+    authProvider: text('auth_provider').notNull().default('local'),
+    /** `${issuer}|${sub}` for SSO accounts; the stable identity, never the e-mail. */
+    externalSubject: text('external_subject'),
     lastLoginAt: ts('last_login_at'),
     createdAt: ts('created_at').notNull().defaultNow(),
     updatedAt: ts('updated_at').notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex('users_email_lower_idx').on(sql`lower(${t.email})`),
+    uniqueIndex('users_external_subject_idx').on(t.authProvider, t.externalSubject),
     index('users_status_idx').on(t.status),
   ],
 );
+
+/** Single-use OIDC login state: PKCE verifier and nonce stay server-side. */
+export const oidcStates = pgTable('oidc_states', {
+  state: text('state').primaryKey(),
+  nonce: text('nonce').notNull(),
+  codeVerifier: text('code_verifier').notNull(),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  expiresAt: ts('expires_at').notNull(),
+  consumedAt: ts('consumed_at'),
+});
 
 export const roles = pgTable('roles', {
   key: text('key').primaryKey(),

@@ -12,6 +12,13 @@ export const CAPABILITIES: CapabilityStatus[] = [
     reason: 'Argon2id, short-lived JWT, rotating refresh tokens, permission-based RBAC',
   },
   {
+    id: 'auth.sso',
+    state: 'not_configured',
+    phase: 7,
+    reason:
+      'OIDC (authorization code + PKCE) available; set OIDC_ISSUER / OIDC_CLIENT_ID / OIDC_REDIRECT_URI to enable',
+  },
+  {
     id: 'audit.tamper_evident',
     state: 'available',
     phase: 0,
@@ -160,6 +167,7 @@ export function resolveCapabilities(input: {
     applyState: string;
   }>;
   ml?: { reachable: boolean; models: number; results: number; detail: string | null };
+  sso?: { enabled: boolean; issuer: string | null; jit: boolean };
   now: Date;
 }): CapabilityStatus[] {
   const engines: Record<string, { sensors: SensorState; label: string }> = {
@@ -167,6 +175,14 @@ export function resolveCapabilities(input: {
     'nsm.zeek': { sensors: input.zeekSensors ?? [], label: 'Zeek' },
   };
   return CAPABILITIES.map((cap) => {
+    if (cap.id === 'auth.sso') {
+      if (!input.sso?.enabled) return cap;
+      return {
+        ...cap,
+        state: 'available',
+        reason: `OIDC login against ${input.sso.issuer} (PKCE, RS256 ID tokens verified locally, JIT provisioning ${input.sso.jit ? 'on' : 'off'}, no e-mail auto-link unless enabled)`,
+      };
+    }
     if (cap.id === 'ml.analytics') {
       const ml = input.ml;
       if (!ml) return cap;

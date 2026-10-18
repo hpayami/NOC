@@ -34,3 +34,4 @@ export * from './rules/ips';
 export * from './entities/assessments';
 export * from './rules/assessment';
 export * from './entities/ml';
+export * from './entities/sso';

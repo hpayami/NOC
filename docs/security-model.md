@@ -31,3 +31,24 @@
 - ML results are typed `advisory: true`; nothing in the schema can represent an ML-triggered block.
 - Assessment targets are checked by `evaluateTarget` with exclusions first, window and technique
   checks, IPv4-mapped IPv6 normalization, and a default refusal of publicly routable addresses.
+
+## Authentication providers (Phase 7)
+
+Two methods exist; a deployment may offer both.
+
+| Concern        | Local credentials                                  | OIDC single sign-on                                                                       |
+| -------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Secret at rest | Argon2id PHC string                                | unusable random hash; password login refused by provider check                            |
+| Identity key   | lower-cased e-mail (unique)                        | `issuer\|sub` (unique per provider); e-mail is informational                              |
+| Session        | short-lived JWT + rotating refresh token family    | identical — issued by the same code path after the ID token is verified                   |
+| Lockout        | failed-attempt counter + lockout window            | delegated to the IdP; refusals are audited here                                           |
+| Linking        | —                                                  | never by e-mail unless `OIDC_AUTO_LINK_BY_EMAIL=true`; collision → 409, audited `denied`  |
+| Role source    | administrators (`users.assign_roles`, SoD-checked) | `OIDC_ROLE_CLAIM` through `OIDC_ROLE_MAP`, else `OIDC_DEFAULT_ROLES`; re-synced per login |
+
+Threats considered: forged or re-signed ID tokens (local RS256 verification against JWKS;
+`alg=none` and HS* rejected), code injection / CSRF on the callback (server-side single-use state
+bound to the browser by an httpOnly `SameSite=Lax` cookie, PKCE verifier never leaves the API),
+replay (state consumed on first use, including failed attempts), token substitution across
+clients (audience and `azp` checks), IdP account takeover inheriting a local admin (no e-mail
+linking by default), privilege drift (roles follow the claim; a change invalidates outstanding
+access tokens), IdP outage (reported as 503 and in `auth.sso` capability; local login unaffected).

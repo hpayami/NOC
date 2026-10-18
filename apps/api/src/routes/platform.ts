@@ -242,6 +242,11 @@ export function platformRoutes(deps: Deps) {
             .from(sensors)
             .where(sql`${sensors.kind} = 'zeek'`),
           enabledIpsPolicies: await deps.ips.enabledSummary(),
+          sso: {
+            enabled: deps.oidc.enabled,
+            issuer: deps.oidc.config?.issuer ?? null,
+            jit: deps.oidc.config?.jit ?? false,
+          },
           ml: await deps.ml.status().then((s) => ({
             reachable: s.reachable,
             models: s.models.length,

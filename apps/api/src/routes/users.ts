@@ -41,6 +41,7 @@ export function userRoutes(deps: Deps) {
         status: u.status,
         roles: roleRows.filter((r) => r.userId === u.id).map((r) => r.roleKey),
         mfaEnrolled: u.mfaEnrolled,
+        authProvider: u.authProvider,
         lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
         createdAt: u.createdAt.toISOString(),
       }),

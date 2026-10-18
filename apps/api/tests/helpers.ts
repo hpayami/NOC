@@ -2,6 +2,7 @@ import pino from 'pino';
 import { sql } from 'drizzle-orm';
 import { createApp, type App } from '../src/app';
 import { AuditService } from '../src/audit/service';
+import { OidcService, oidcConfigFromEnv } from '../src/auth/oidc';
 import { AlertBus } from '../src/events/bus';
 import { loadEnv, type Env } from '../src/config/env';
 import { createDb, type DbHandle } from '../src/db/client';
@@ -69,13 +70,14 @@ export async function createHarness(
       timeoutMs: 1500,
       probeTtlMs: 0,
     }),
+    oidc: new OidcService(handle.db, audit, oidcConfigFromEnv(env)),
   });
   return { app, handle, env, limiter, close: () => handle.close() };
 }
 
 export async function resetDatabase(handle: DbHandle): Promise<void> {
   await handle.db.execute(
-    sql`truncate table users, refresh_tokens, audit_events, assets, sensors, alerts, incidents, retention_policies, response_actions, approvals, ips_policies, assessment_engagements, vulnerability_findings, ml_inference_results restart identity cascade`,
+    sql`truncate table users, refresh_tokens, audit_events, assets, sensors, alerts, incidents, retention_policies, response_actions, approvals, ips_policies, assessment_engagements, vulnerability_findings, ml_inference_results, oidc_states restart identity cascade`,
   );
 }
 
