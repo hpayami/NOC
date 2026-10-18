@@ -9,6 +9,7 @@ import {
 } from '../enums';
 import { AuthorizedTargetScope } from './governance';
 import { VulnerabilityFinding } from './secops';
+import { VulnerabilityRecord } from './vulnerabilities';
 
 export const CreateEngagementRequest = z.strictObject({
   reference: ShortText,
@@ -150,6 +151,8 @@ export const FindingRecord = VulnerabilityFinding.extend({
   description: LongText,
   lastNote: LongText.nullable(),
   updatedAt: Timestamp,
+  /** Catalogue entries for the finding's CVE ids (empty when the catalogue has none of them). */
+  vulnerabilities: z.array(VulnerabilityRecord).max(32),
 });
 export type FindingRecord = z.infer<typeof FindingRecord>;
 

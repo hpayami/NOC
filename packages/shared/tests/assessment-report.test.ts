@@ -48,6 +48,7 @@ const finding = (target: string, over: Partial<FindingRecord> = {}): FindingReco
   description: '',
   lastNote: null,
   updatedAt: '2026-10-18T10:00:30.000Z',
+  vulnerabilities: [],
   ...over,
 });
 const engagement: EngagementRecord = {

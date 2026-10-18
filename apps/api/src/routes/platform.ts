@@ -16,6 +16,7 @@ import { alerts, assets, auditEvents, incidents, sensors } from '../db/schema';
 import { requirePermission } from '../middleware/auth';
 import type { AppEnv } from '../middleware/context';
 import { resolveCapabilities } from '../platform/capabilities';
+import { VulnerabilityService } from '../vulnerabilities/service';
 
 const err = (d: string) => ({
   description: d,
@@ -247,6 +248,7 @@ export function platformRoutes(deps: Deps) {
             issuer: deps.oidc.config?.issuer ?? null,
             jit: deps.oidc.config?.jit ?? false,
           },
+          vulnCatalog: await new VulnerabilityService(deps.db, deps.audit).stats(),
           ml: await deps.ml.status().then((s) => ({
             reachable: s.reachable,
             models: s.models.length,

@@ -147,6 +147,13 @@ export const CAPABILITIES: CapabilityStatus[] = [
       'Suricata rule import with licence, parsing, severity/ATT&CK extraction, validation lifecycle, alert linkage',
   },
   {
+    id: 'vuln.catalog',
+    state: 'not_configured',
+    phase: 5,
+    reason:
+      'No vulnerability catalogue imported; findings carry only the CVEs their source supplied (import NVD 2.0 / CISA KEV via /api/v1/vulnerabilities/import)',
+  },
+  {
     id: 'ml.analytics',
     state: 'not_configured',
     phase: 6,
@@ -168,6 +175,7 @@ export function resolveCapabilities(input: {
   }>;
   ml?: { reachable: boolean; models: number; results: number; detail: string | null };
   sso?: { enabled: boolean; issuer: string | null; jit: boolean };
+  vulnCatalog?: { total: number; knownExploited: number; lastImportAt: string | null };
   now: Date;
 }): CapabilityStatus[] {
   const engines: Record<string, { sensors: SensorState; label: string }> = {
@@ -181,6 +189,15 @@ export function resolveCapabilities(input: {
         ...cap,
         state: 'available',
         reason: `OIDC login against ${input.sso.issuer} (PKCE, RS256 ID tokens verified locally, JIT provisioning ${input.sso.jit ? 'on' : 'off'}, no e-mail auto-link unless enabled)`,
+      };
+    }
+    if (cap.id === 'vuln.catalog') {
+      const v = input.vulnCatalog;
+      if (!v || v.total === 0) return cap;
+      return {
+        ...cap,
+        state: 'available',
+        reason: `${v.total} CVE(s) catalogued, ${v.knownExploited} known exploited; last import ${v.lastImportAt ?? 'unknown'}. Enrichment is by CVE id only — no version matching`,
       };
     }
     if (cap.id === 'ml.analytics') {

@@ -31,6 +31,7 @@ import type { AssetService } from '../assets/service';
 import type { AuditService } from '../audit/service';
 import type { Db, DbTx } from '../db/client';
 import { findingSiteCondition } from '../middleware/scope';
+import { VulnerabilityService } from '../vulnerabilities/service';
 import {
   approvals,
   assessmentEngagements,
@@ -136,6 +137,7 @@ export const toFinding = (f: FindingRow): FindingRecord => ({
   description: f.description,
   lastNote: f.lastNote,
   updatedAt: f.updatedAt.toISOString(),
+  vulnerabilities: [],
 });
 
 class RateGate {
@@ -946,7 +948,9 @@ export class AssessmentService {
     return {
       run: toRun(run),
       targets: targets.map(toTarget),
-      findings: findings.map((f) => toFinding(f)),
+      findings: await new VulnerabilityService(this.db, this.audit).attach(
+        findings.map((f) => toFinding(f)),
+      ),
     };
   }
 
@@ -1030,7 +1034,7 @@ export class AssessmentService {
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(desc(vulnerabilityFindings.lastDetectedAt))
       .limit(limit);
-    return rows.map(toFinding);
+    return new VulnerabilityService(this.db, this.audit).attach(rows.map(toFinding));
   }
 
   async updateFinding(

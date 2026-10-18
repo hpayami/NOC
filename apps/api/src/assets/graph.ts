@@ -29,6 +29,8 @@ import {
   vulnerabilityFindings,
 } from '../db/schema';
 import { assetSiteCondition } from '../middleware/scope';
+import { VulnerabilityService } from '../vulnerabilities/service';
+import type { AuditService } from '../audit/service';
 import { toPublicAsset, toPublicInterface } from '../routes/assets';
 
 type AssetRow = typeof assets.$inferSelect;
@@ -83,6 +85,8 @@ export async function assetGraph(
         assetId: vulnerabilityFindings.assetId,
         severity: vulnerabilityFindings.severity,
         validated: vulnerabilityFindings.validated,
+        cvss: vulnerabilityFindings.cvssBaseScore,
+        kev: sql<boolean>`exists (select 1 from vulnerability_catalog c where c.known_exploited and c.cve_id = any(${vulnerabilityFindings.cve}))`,
       })
       .from(vulnerabilityFindings)
       .where(
@@ -164,7 +168,12 @@ export async function assetGraph(
       risk: assessAssetRisk({
         monitoringCoverage: a.monitoringCoverage,
         assuranceState: a.assuranceState,
-        openFindings: f.map((x) => ({ severity: x.severity, validated: x.validated })),
+        openFindings: f.map((x) => ({
+          severity: x.severity,
+          validated: x.validated,
+          knownExploited: Boolean(x.kev),
+          cvssBaseScore: x.cvss,
+        })),
         openAlerts: al.map((x) => ({ severity: x.severity })),
         exposures: ports.map((p) => ({ port: p, severity: risky.get(p)?.severity ?? null })),
         criticality: a.criticality,
@@ -223,7 +232,7 @@ export async function assetRiskProfile(
   db: Db,
   id: string,
   principal: { sites: readonly string[] | null; permissions: ReadonlySet<string> },
-  opts: { hours?: number; now?: Date } = {},
+  opts: { hours?: number; now?: Date; audit?: AuditService } = {},
 ): Promise<AssetRiskProfile> {
   const now = opts.now ?? new Date();
   const hours = opts.hours ?? 168;
@@ -420,7 +429,10 @@ export async function assetRiskProfile(
     });
   }
 
-  const openFindings = findingRows.filter((f) => f.status === 'open');
+  const findings = opts.audit
+    ? await new VulnerabilityService(db, opts.audit).attach(findingRows.map(toFinding))
+    : findingRows.map(toFinding);
+  const openFindings = findings.filter((f) => f.status === 'open');
   const openAlerts = alertRows.filter(
     (r) => !(CLOSED_ALERT_STATUSES as readonly string[]).includes(r.alert.status),
   );
@@ -430,6 +442,11 @@ export async function assetRiskProfile(
     openFindings: openFindings.map((f) => ({
       severity: f.severity as Severity,
       validated: f.validated,
+      knownExploited: f.vulnerabilities.some((v) => v.knownExploited),
+      cvssBaseScore:
+        f.cvssBaseScore ??
+        f.vulnerabilities.map((v) => v.cvssBaseScore).find((x) => x !== null) ??
+        null,
     })),
     openAlerts: openAlerts.map((r) => ({ severity: r.alert.severity as Severity })),
     exposures: openPorts.map((p) => ({ port: p.port, severity: p.severity })),
@@ -457,7 +474,7 @@ export async function assetRiskProfile(
       techniques: r.techniques ?? [],
     })),
     alertsIncluded,
-    findings: findingRows.map(toFinding),
+    findings,
     findingsIncluded,
     neighbors: neighbors.sort((x, y) => y.weight - x.weight).slice(0, 100),
     generatedAt: now.toISOString(),

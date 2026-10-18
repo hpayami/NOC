@@ -189,6 +189,14 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   acknowledgement, EVE shipping with a checkpoint that moves only on acceptance. See
   `services/sensor-agent/README.md`.
 
+## Vulnerability catalogue
+
+- Import NVD API 2.0 and CISA KEV JSON (`POST /api/v1/vulnerabilities/import`,
+  `threat_intel.manage`); imports merge by CVE and never overwrite what another feed said.
+  Findings referencing a catalogued CVE get CVSS filled in where missing and carry the catalogue
+  entries; known-exploited and CVSS ≥ 9 raise the explained asset risk. Enrichment is by CVE id
+  only, never by product name. Capability `vuln.catalog` reports the state.
+
 ## Phase 2 rule deployment
 
 - Validated rules are deployed by a separate permission (`detection_rules.deploy`, SoD with

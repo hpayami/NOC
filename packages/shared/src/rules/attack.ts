@@ -82,7 +82,13 @@ const SEV_POINTS: Record<Severity, number> = {
 export interface RiskInput {
   monitoringCoverage: string;
   assuranceState: string;
-  openFindings: ReadonlyArray<{ severity: Severity; validated: boolean }>;
+  openFindings: ReadonlyArray<{
+    severity: Severity;
+    validated: boolean;
+    /** From the vulnerability catalogue when the finding carries CVE ids. */
+    knownExploited?: boolean;
+    cvssBaseScore?: number | null;
+  }>;
   openAlerts: ReadonlyArray<{ severity: Severity }>;
   exposures: ReadonlyArray<{ port: number; severity: Severity | null }>;
   criticality: string;
@@ -110,7 +116,18 @@ export function assessAssetRisk(input: RiskInput): RiskAssessment {
   for (const f of input.openFindings) {
     const pts = SEV_POINTS[f.severity] * (f.validated ? 1 : 0.6);
     score += pts;
+    if (typeof f.cvssBaseScore === 'number' && f.cvssBaseScore >= 9) score += 10;
+    if (f.knownExploited) score += 20;
   }
+  const kev = input.openFindings.filter((f) => f.knownExploited).length;
+  if (kev)
+    basis.push(
+      `${kev} open finding(s) reference CVEs with exploitation observed in the wild (CISA KEV)`,
+    );
+  const critCvss = input.openFindings.filter(
+    (f) => typeof f.cvssBaseScore === 'number' && f.cvssBaseScore >= 9,
+  ).length;
+  if (critCvss) basis.push(`${critCvss} open finding(s) carry a CVSS base score of 9.0 or higher`);
   if (input.openFindings.length) {
     const top = input.openFindings
       .map((f) => f.severity)

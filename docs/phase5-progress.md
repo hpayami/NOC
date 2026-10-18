@@ -109,3 +109,48 @@ pytest 8; e2e 5/5.
 PDF/DOCX export, evidence attachments in the report, per-finding remediation guidance beyond
 the finding record, and signed/hashed report artefacts (the audit row records the export, not a
 digest of its content).
+
+## Slice 3 — Vulnerability catalogue and CVE enrichment (2026-10-18)
+
+**Delivered**
+
+- `vulnerability_catalog` imported by the operator from the feeds they already trust:
+  `POST /api/v1/vulnerabilities/import` (`threat_intel.manage`) accepts **NVD API 2.0** responses
+  (primary CVSS v4/v3.1/v3.0/v2 metric, English description, CWE ids, dates), the **CISA KEV**
+  catalogue (exploited-in-the-wild flag with added/due dates, never a CVSS score) and a native
+  array. Parsers are pure (`packages/shared/src/rules/vuln-feeds.ts`); malformed entries are
+  reported, not dropped silently; a document with nothing parseable is rejected (422). Imports
+  **merge by CVE**: a feed overwrites only the fields it carries, so KEV never clears a score and
+  NVD never clears the exploited flag; `sources` records which feeds contributed. Re-imports are
+  idempotent (`unchanged`). Audited `vulnerabilities.import`.
+- **Enrichment by CVE id only.** Findings that reference a catalogued CVE and have no CVSS get
+  the catalogue's score/vector filled in (never overwritten); every finding now carries
+  `vulnerabilities[]` with the matching catalogue entries. There is no product/version matching —
+  the platform does not claim a host is vulnerable because of a package name.
+- Reads (`findings.read`): `GET /api/v1/vulnerabilities` (search, `knownExploited` filter;
+  exploited and highest CVSS first), `GET /{cveId}`, `GET /stats` including the CVEs findings
+  reference that the catalogue lacks — what to import next.
+- Risk: `assessAssetRisk` adds to the score and to the basis for open findings whose CVE is known
+  exploited or carries CVSS ≥ 9.0; the asset graph nodes and the risk profile use it.
+- Capability `vuln.catalog`: `not_configured` until an import, then `available` with counts and
+  the last import time, stating that enrichment is by CVE id only.
+- Web: catalogue panel and import form (format + JSON paste) on the vulnerability page; CVSS and
+  a KEV badge on findings there and in the asset-graph panel.
+- Schema (`0017_phase5_vuln_catalog`): `vulnerability_catalog`.
+
+**Verified**
+
+Shared: NVD primary-metric selection, English description, CWE filtering, malformed id error,
+missing metrics → nulls; KEV flag and dates without CVSS; native format, invalid JSON, wrong
+shapes, last duplicate wins; risk amplification sentences. API: finding with one catalogued and
+one unknown CVE; capability `not_configured` and `uncatalogued` listing; analyst cannot import;
+NVD import enriches the finding; re-import unchanged; KEV merge keeps CVSS and sets the flag with
+sources; 404/400 on lookups; filters; rejected feed; finding carries CVSS, vector and attached
+record while the unknown CVE stays listed; risk profile and graph node basis mention exploitation
+in the wild and CVSS ≥ 9; capability `available` with counts; three audit rows. Totals: shared 113,
+API 102, web 4, pytest 8 + 7; e2e 5/5.
+
+**Not delivered**
+
+Automatic feed download (the operator imports from a trusted copy), product/version-based
+matching (CPE), EPSS scores.

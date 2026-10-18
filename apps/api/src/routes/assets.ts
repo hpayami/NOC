@@ -361,10 +361,12 @@ export function assetRoutes(deps: Deps) {
       const p = c.get('principal')!;
       return c.json(
         AssetRiskProfile.parse(
-          await assetRiskProfile(db, c.req.valid('param').id, {
-            sites: siteScope(p),
-            permissions: p.permissions,
-          }),
+          await assetRiskProfile(
+            db,
+            c.req.valid('param').id,
+            { sites: siteScope(p), permissions: p.permissions },
+            { audit: deps.audit },
+          ),
         ),
         200,
       );

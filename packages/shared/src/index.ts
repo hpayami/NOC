@@ -36,6 +36,8 @@ export * from './rules/assessment';
 export * from './rules/assessment-report';
 export * from './rules/rule-bundle';
 export * from './rules/attack';
+export * from './rules/vuln-feeds';
 export * from './entities/ml';
 export * from './entities/sso';
 export * from './entities/sites';
+export * from './entities/vulnerabilities';

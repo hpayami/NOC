@@ -1,12 +1,19 @@
 import { z } from 'zod';
-import { FindingRecord, FindingStatusValues, type Severity } from '@noc/shared';
+import {
+  FindingRecord,
+  FindingStatusValues,
+  VulnerabilityCatalogStats,
+  type Severity,
+} from '@noc/shared';
 import { getI18n } from '@/i18n/server';
 import { apiFetch } from '@/lib/api';
 import { getSessionUser } from '@/lib/session';
 import { FindingForm } from '../red-team/controls';
+import { ImportCatalogForm } from './import-form';
 
 export const dynamic = 'force-dynamic';
 const List = z.object({ items: z.array(FindingRecord) });
+const Stats = VulnerabilityCatalogStats.extend({ uncatalogued: z.array(z.string()) });
 const SEV: Record<Severity, string> = {
   info: 'text-sev-info',
   low: 'text-sev-low',
@@ -24,7 +31,11 @@ export default async function VulnerabilitiesPage({
   const { all } = await searchParams;
   const me = await getSessionUser();
   const canManage = me?.permissions.includes('findings.manage') ?? false;
-  const list = await apiFetch(`/api/v1/findings?limit=200${all ? '' : '&status=open'}`, List);
+  const canImport = me?.permissions.includes('threat_intel.manage') ?? false;
+  const [list, stats] = await Promise.all([
+    apiFetch(`/api/v1/findings?limit=200${all ? '' : '&status=open'}`, List),
+    apiFetch('/api/v1/vulnerabilities/stats', Stats),
+  ]);
   const when = new Intl.DateTimeFormat(locale === 'fa' ? 'fa-IR' : 'en-GB', {
     dateStyle: 'short',
     timeStyle: 'short',
@@ -44,6 +55,37 @@ export default async function VulnerabilitiesPage({
           {all ? t('alerts.show_open') : t('alerts.show_all')}
         </a>
       </header>
+      <section
+        className="rounded-lg border border-border bg-surface p-4 text-sm"
+        data-testid="vuln-catalog"
+      >
+        <h2 className="font-medium">{t('vuln.catalog')}</h2>
+        {stats.total === 0 ? (
+          <p className="mt-1 text-xs text-muted">{t('vuln.catalog_none')}</p>
+        ) : (
+          <p className="ltr mt-1 text-xs text-muted">
+            {t('vuln.catalog_stats')}: {stats.total} · {t('vuln.catalog_kev')}:{' '}
+            {stats.knownExploited} · {t('vuln.catalog_last')}:{' '}
+            {stats.lastImportAt ? when.format(new Date(stats.lastImportAt)) : '—'}
+          </p>
+        )}
+        {stats.uncatalogued.length ? (
+          <p className="ltr mt-1 text-xs text-muted">
+            {t('vuln.uncatalogued')}: {stats.uncatalogued.join(', ')}
+          </p>
+        ) : null}
+      </section>
+      {canImport ? (
+        <ImportCatalogForm
+          labels={{
+            heading: t('vuln.import'),
+            hint: t('vuln.import_hint'),
+            format: t('vuln.import_format'),
+            submit: t('vuln.import_submit'),
+            result: t('vuln.import_result'),
+          }}
+        />
+      ) : null}
       {list.items.length === 0 ? (
         <div className="rounded-lg border border-border bg-surface p-5 text-sm">
           <p>{t('vuln.empty')}</p>
@@ -63,6 +105,17 @@ export default async function VulnerabilitiesPage({
                   </span>
                 ) : null}
                 <span className="ltr text-muted">{f.cwe.join(', ')}</span>
+                {f.cvssBaseScore !== null ? (
+                  <span className="ltr text-muted">
+                    {t('vuln.cvss')} {f.cvssBaseScore}
+                  </span>
+                ) : null}
+                {f.vulnerabilities.some((v) => v.knownExploited) ? (
+                  <span className="rounded border border-sev-critical/40 px-1 text-sev-critical">
+                    {t('vuln.kev')}
+                  </span>
+                ) : null}
+                {f.cve.length ? <span className="ltr text-muted">{f.cve.join(', ')}</span> : null}
                 <span className="ms-auto text-muted">
                   {t('vuln.last_seen')} {when.format(new Date(f.lastDetectedAt))}
                 </span>

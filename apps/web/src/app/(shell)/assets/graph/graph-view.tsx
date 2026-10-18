@@ -462,6 +462,12 @@ function ProfilePanel({
             <li key={f.id} className="ltr">
               <span className={SEV_CLASS[f.severity]}>{f.severity}</span> {f.title}
               {f.cve.length ? <span className="text-muted"> · {f.cve.join(', ')}</span> : null}
+              {f.cvssBaseScore !== null ? (
+                <span className="text-muted"> · CVSS {f.cvssBaseScore}</span>
+              ) : null}
+              {f.vulnerabilities.some((v) => v.knownExploited) ? (
+                <span className="text-sev-critical"> · KEV</span>
+              ) : null}
               {f.cwe.length ? <span className="text-muted"> · {f.cwe.join(', ')}</span> : null}
               <span className="text-muted">
                 {' '}
