@@ -81,10 +81,10 @@ export const NAV: NavItem[] = [
   {
     slug: 'blue-team',
     label: 'nav.blue_team',
-    capabilities: ['soc.alerts', 'events.pipeline'],
+    capabilities: ['detection.rule_registry', 'nids.suricata', 'events.pipeline'],
     permission: 'detection_rules.read',
     phase: 3,
-    implemented: false,
+    implemented: true,
   },
   {
     slug: 'red-team',

@@ -193,6 +193,11 @@ test.describe('Phase 0 shell', () => {
     await expect(page.getByText('هیچ سیاست پیشگیری درون‌خطی پیشنهاد نشده است.')).toBeVisible();
     // No Suricata sensor is registered, so no proposal form is offered — nothing to switch on.
     await expect(page.getByText('سنسور Suricata ثبت نشده است')).toBeVisible();
+    // Blue team: every catalogue technique is uncovered on an empty platform, and it says so.
+    await page.goto('/blue-team?days=7');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('تیم آبی — پوشش تشخیص');
+    await expect(page.getByTestId('bt-summary')).toContainText('بدون پوشش');
+    await expect(page.getByText('شکافی ثبت نشده است')).toBeVisible();
     // ML analytics: advisory banner, service state reported, no fabricated scores.
     await page.goto('/ml-analytics');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('تحلیل ML (مشورتی)');

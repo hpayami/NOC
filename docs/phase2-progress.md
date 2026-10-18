@@ -142,3 +142,49 @@ status exposes the digest; audit rows. Totals: shared 106, API 100, web 4, pytes
 A sensor-side agent that fetches and installs the bundle (the sensor contract is defined; the
 reference agent is Phase 4/7 work), rule-level per-sensor status (state is per bundle), Sigma
 compilation to engine rules.
+
+## Slice 4 — Blue-team workspace: ATT&CK detection coverage (2026-10-18)
+
+**Delivered**
+
+- **Contract** (`packages/shared/src/entities/coverage.ts`): `DetectionCoverage` with one row
+  per ATT&CK technique — status, rule counts by lifecycle, sensors in sync, observations in the
+  period, open alerts, exposed assets — plus a summary (counts per status, the two actionable
+  gap counts, per-tactic coverage, sensors enabled/in-sync by engine) and limitations.
+- **Rule** (`rules/coverage.ts`, pure `computeCoverage`): a technique is `covered` only when a
+  **deployed** rule references it **and** an enabled sensor of that rule's engine acknowledged
+  the current bundle (a rule nobody runs detects nothing); `deployed_unacknowledged` when the
+  rule is deployed but no sensor confirms the bundle; `rule_not_deployed` when only draft,
+  validated or disabled rules exist; `uncovered` otherwise. Retired rules never count.
+  Techniques outside the platform catalogue (seen only in a rule or an event) are kept with a
+  null name, never dropped. `engineOfRuleSource` maps rule sources to their engine.
+- **Service** (`DetectionCoverageService`): registry rules × `deploymentState` (bundle
+  acknowledgement, site-scoped) × events whose engine tagged a technique (Suricata
+  `mitre_technique_id` metadata, period-bounded, site-scoped) × open alerts by their last
+  event's techniques × listening services observed on inventoried assets mapped through the
+  exposure table. `GET /api/v1/detection-rules/coverage?days=` (`detection_rules.read`).
+- Web `/blue-team`: summary (statuses, exposed-and-uncovered, observed-and-uncovered, sensors
+  by engine, per-tactic ratios), actionable gaps strip, full technique table with a gaps-only
+  filter, limitations; link to detection engineering. NAV marks the workspace implemented.
+
+**Verified**
+
+Shared (3): engine mapping; covered / deployed-unacknowledged / rule-not-deployed / uncovered
+across engines and lifecycles, retired rules ignored, out-of-catalogue technique kept, gap
+counts, per-tactic and per-engine sensor tallies, sorted rows; empty platform = every
+technique uncovered, not nothing. API (1, through the real pipeline): operator without the
+permission 403, `days=0` 400; empty platform all uncovered with no sensors; a custom rule with
+`mitre_technique_id T1046` imported → `rule_not_deployed`; validated and deployed with a sensor
+that never acknowledged → `deployed_unacknowledged`; bundle fetched and heartbeat with its
+digest → `covered` with one sensor in sync; two detections of that signature and one of
+another → observed 2 / open alerts 1 for T1046, T1595 observed and uncovered; an inventoried
+asset listening on 3389 → RDP/external-remote-service/brute-force techniques exposed and
+uncovered. Totals: shared 130, API 111 (28 files), web 4, pytest 8 + agent 7; e2e 5/5 (blue
+team sees everything uncovered and no gap on an empty platform).
+
+**Known limitations**
+
+Coverage reflects the registry only (rules an engine loads outside the platform are invisible);
+Zeek scripts carry no technique metadata unless the import names them; observation attribution
+depends on engine tagging; no detection validation (replay a sample through a sensor to prove
+the rule fires) yet — that is the natural next step for this workspace.

@@ -3,6 +3,8 @@ import { HTTPException } from 'hono/http-exception';
 import { and, count, desc, eq, ilike, sql, type SQL } from 'drizzle-orm';
 import {
   ApiError,
+  CoverageQuery,
+  DetectionCoverage,
   DetectionRuleDetail,
   ImportRulesRequest,
   ImportRulesResponse,
@@ -20,6 +22,7 @@ import { requirePermission } from '../middleware/auth';
 import { siteScope } from '../middleware/scope';
 import type { AppEnv } from '../middleware/context';
 import { RuleService, type RuleActor } from '../rules/service';
+import { DetectionCoverageService } from '../rules/coverage';
 
 const err = (d: string) => ({
   description: d,
@@ -188,6 +191,35 @@ export function ruleRoutes(deps: Deps) {
         200,
       );
     },
+  );
+
+  app.openapi(
+    createRoute({
+      method: 'get',
+      path: '/coverage',
+      tags: ['detection-rules'],
+      middleware: [requirePermission('detection_rules.read')] as const,
+      security: [{ bearerAuth: [] }],
+      request: { query: CoverageQuery },
+      responses: {
+        200: {
+          description:
+            'ATT&CK technique coverage: registry rules × sensors acknowledging the bundle × observed × exposed, inside the caller site scope',
+          content: { 'application/json': { schema: DetectionCoverage } },
+        },
+        ...common,
+      },
+    }),
+    async (c) =>
+      c.json(
+        DetectionCoverage.parse(
+          await new DetectionCoverageService(deps.db, deps.audit).coverage(
+            siteScope(c.get('principal')),
+            c.req.valid('query').days,
+          ),
+        ),
+        200,
+      ),
   );
 
   app.openapi(

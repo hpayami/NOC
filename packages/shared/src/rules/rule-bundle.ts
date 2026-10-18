@@ -8,10 +8,15 @@ export function bundleEngineFor(sensorKind: string): BundleEngine | null {
   return null;
 }
 
-const ENGINE_SOURCES: Record<BundleEngine, readonly RuleSource[]> = {
+export const ENGINE_SOURCES: Record<BundleEngine, readonly RuleSource[]> = {
   suricata: ['et_open', 'custom', 'vendor'],
   zeek: ['zeek_script'],
 };
+
+/** Engine that consumes rules of a given source. */
+export function engineOfRuleSource(source: string): BundleEngine {
+  return (ENGINE_SOURCES.zeek as readonly string[]).includes(source) ? 'zeek' : 'suricata';
+}
 
 export interface BundleCandidate {
   id: string;

@@ -197,6 +197,14 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   entries; known-exploited and CVSS ≥ 9 raise the explained asset risk. Enrichment is by CVE id
   only, never by product name. Capability `vuln.catalog` reports the state.
 
+## Blue team — detection coverage
+
+- `GET /api/v1/detection-rules/coverage?days=30` scores every ATT&CK technique in the catalogue:
+  covered only when a deployed rule is acknowledged by a running sensor; otherwise deployed but
+  unacknowledged, rule not deployed, or uncovered. Observations (engine-tagged events), open
+  alerts and assets exposing the technique through listening services make the gaps actionable.
+  Web `/blue-team`.
+
 ## Reports
 
 - `GET /api/v1/reports/posture?days=30` (JSON or `format=markdown`) aggregates every plane for

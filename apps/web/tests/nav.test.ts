@@ -23,6 +23,7 @@ describe('navigation and i18n', () => {
       'administration',
       'assets',
       'audit-logs',
+      'blue-team',
       'command-center',
       'detection-engineering',
       'incidents',
