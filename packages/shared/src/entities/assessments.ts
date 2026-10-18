@@ -153,6 +153,75 @@ export const FindingRecord = VulnerabilityFinding.extend({
 });
 export type FindingRecord = z.infer<typeof FindingRecord>;
 
+/** What the platform can honestly say about one in-scope address. */
+export const TargetCoverageStatusValues = [
+  'assessed_with_findings',
+  'assessed_no_findings',
+  'unreachable',
+  'denied',
+  'not_assessed',
+] as const;
+export const TargetCoverageStatus = z.enum(TargetCoverageStatusValues);
+export type TargetCoverageStatus = z.infer<typeof TargetCoverageStatus>;
+
+export const TargetCoverage = z.strictObject({
+  target: IpAddress,
+  status: TargetCoverageStatus,
+  /** Techniques that actually probed this address (live runs only). */
+  techniques: z.array(AssessmentTechnique),
+  openPorts: z.array(Port).max(64),
+  findingCount: z.number().int().nonnegative(),
+  reasons: z.array(z.string().max(256)).max(16),
+  lastObservedAt: Timestamp.nullable(),
+  /** Address was probed by a run but is not in the current scope version. */
+  outsideCurrentScope: z.boolean(),
+});
+export type TargetCoverage = z.infer<typeof TargetCoverage>;
+
+export const TechniqueCoverage = z.strictObject({
+  technique: AssessmentTechnique,
+  executable: z.boolean(),
+  liveRuns: z.number().int().nonnegative(),
+  dryRuns: z.number().int().nonnegative(),
+  status: z.enum(['performed', 'dry_run_only', 'not_performed', 'not_executable']),
+});
+export type TechniqueCoverage = z.infer<typeof TechniqueCoverage>;
+
+export const CoverageSummary = z.strictObject({
+  targetsInScope: z.number().int().nonnegative(),
+  assessedWithFindings: z.number().int().nonnegative(),
+  assessedNoFindings: z.number().int().nonnegative(),
+  unreachable: z.number().int().nonnegative(),
+  denied: z.number().int().nonnegative(),
+  notAssessed: z.number().int().nonnegative(),
+  /** Scope enumeration or the target table hit a bound; counts above are of what was listed. */
+  truncated: z.boolean(),
+});
+export type CoverageSummary = z.infer<typeof CoverageSummary>;
+
+/**
+ * Engagement report: everything the platform knows, plus everything it does not. `limitations`
+ * is part of the contract so a report can never silently read as "the network was assessed".
+ */
+export const EngagementReport = z.strictObject({
+  generatedAt: Timestamp,
+  generatedBy: Id,
+  engagement: EngagementRecord,
+  techniques: z.array(TechniqueCoverage),
+  runs: z.array(AssessmentRun),
+  coverage: CoverageSummary,
+  targets: z.array(TargetCoverage).max(5000),
+  /** Present only when the requester holds findings.read (see limitations otherwise). */
+  findings: z.array(FindingRecord),
+  findingsIncluded: z.boolean(),
+  limitations: z.array(z.string().max(512)),
+});
+export type EngagementReport = z.infer<typeof EngagementReport>;
+
+export const ReportFormatQuery = z.strictObject({
+  format: z.enum(['json', 'markdown']).default('json'),
+});
+
 export const RunDetail = z.strictObject({
   run: AssessmentRun,
   targets: z.array(RunTarget),

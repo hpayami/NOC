@@ -1,7 +1,13 @@
 import net from 'node:net';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { AssessmentRun, EngagementRecord, FindingRecord, RunDetail } from '@noc/shared';
+import {
+  AssessmentRun,
+  EngagementRecord,
+  EngagementReport,
+  FindingRecord,
+  RunDetail,
+} from '@noc/shared';
 import {
   authed,
   createHarness,
@@ -20,6 +26,7 @@ let red: string; // red_team_operator: assessments.plan/execute, findings.manage
 let sec: string; // security_admin: assessments.approve
 let vuln: string; // vulnerability_analyst: findings.manage
 let auditor: string; // read only
+let blue: string; // blue_team_engineer: assessments.read without findings.read
 const PW = 'assessment-password-that-is-long-enough';
 
 const hourAgo = () => new Date(Date.now() - 3_600_000).toISOString();
@@ -83,14 +90,15 @@ beforeEach(async () => {
     ['sec@test.local', 'security_admin'],
     ['vuln@test.local', 'vulnerability_analyst'],
     ['auditor@test.local', 'read_only_auditor'],
+    ['blue@test.local', 'blue_team_engineer'],
   ] as const)
     await createUser(h, admin.token, { email, password: PW, roles: [role] });
   const t = await Promise.all(
-    ['red', 'sec', 'vuln', 'auditor'].map(
+    ['red', 'sec', 'vuln', 'auditor', 'blue'].map(
       async (u) => (await login(h, `${u}@test.local`, PW)).body.accessToken as string,
     ),
   );
-  [red, sec, vuln, auditor] = t as [string, string, string, string];
+  [red, sec, vuln, auditor, blue] = t as [string, string, string, string, string];
   expect(
     (
       await post('/api/v1/network/segments', admin.token, {
@@ -383,6 +391,57 @@ describe('assessment engagements', () => {
       expect(
         (await jsonOf(await get(`/api/v1/assessments/engagements/${e.id}`, auditor))).runCount,
       ).toBe(4);
+
+      // Report: coverage from the run records, findings for findings.read holders, limitations always.
+      const report = EngagementReport.parse(
+        await jsonOf(await get(`/api/v1/assessments/engagements/${e.id}/report`, vuln)),
+      );
+      expect(report.runs).toHaveLength(4);
+      expect(report.coverage).toMatchObject({
+        targetsInScope: 1,
+        assessedWithFindings: 1,
+        notAssessed: 0,
+        truncated: false,
+      });
+      expect(report.targets[0]).toMatchObject({
+        status: 'assessed_with_findings',
+        findingCount: 1,
+        outsideCurrentScope: false,
+      });
+      expect(report.targets[0]!.openPorts).toContain(port);
+      expect(report.targets[0]!.techniques).toContain('service_fingerprint');
+      expect(report.techniques.find((x) => x.technique === 'service_fingerprint')).toMatchObject({
+        executable: true,
+        status: 'performed',
+      });
+      expect(report.findingsIncluded).toBe(true);
+      expect(report.findings).toHaveLength(1);
+      expect(report.limitations.join('\n')).toMatch(/connect-level/);
+      expect(report.limitations.join('\n')).toMatch(/interim report/);
+      const md = await get(`/api/v1/assessments/engagements/${e.id}/report?format=markdown`, vuln);
+      expect(md.headers.get('content-type')).toMatch(/text\/markdown/);
+      const text = await md.text();
+      expect(text).toContain(`# Assessment report — ${e.reference}`);
+      expect(text).toContain(`tcp/${port}`);
+      // Without findings.read the findings are withheld and the report says so.
+      const withheld = EngagementReport.parse(
+        await jsonOf(await get(`/api/v1/assessments/engagements/${e.id}/report`, blue)),
+      );
+      expect(withheld.findingsIncluded).toBe(false);
+      expect(withheld.findings).toHaveLength(0);
+      expect(withheld.limitations.join('\n')).toMatch(/withheld/i);
+      expect(
+        (
+          await get(
+            `/api/v1/assessments/engagements/00000000-0000-4000-8000-00000000dead/report`,
+            vuln,
+          )
+        ).status,
+      ).toBe(404);
+      const audit = await jsonOf(await get('/api/v1/audit?limit=100', admin.token));
+      expect(
+        audit.items.filter((x: { action: string }) => x.action === 'assessments.report'),
+      ).toHaveLength(3); // JSON, Markdown and the withheld one: every export is audited
     } finally {
       server.close();
     }

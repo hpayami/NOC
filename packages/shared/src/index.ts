@@ -33,6 +33,7 @@ export * from './entities/ips';
 export * from './rules/ips';
 export * from './entities/assessments';
 export * from './rules/assessment';
+export * from './rules/assessment-report';
 export * from './entities/ml';
 export * from './entities/sso';
 export * from './entities/sites';

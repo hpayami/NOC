@@ -9,6 +9,8 @@ import {
   EngagementDecisionRequest,
   EngagementListQuery,
   EngagementRecord,
+  EngagementReport,
+  ReportFormatQuery,
   EngagementScopeUpdateRequest,
   EngagementTransitionRequest,
   FindingListQuery,
@@ -136,6 +138,38 @@ export function assessmentRoutes(deps: Deps) {
       responses: { 200: okE('Engagement'), 404: err('Not found'), ...common },
     }),
     async (c) => c.json(await svc.get(c.req.valid('param').id), 200),
+  );
+
+  app.openapi(
+    createRoute({
+      method: 'get',
+      path: '/engagements/{id}/report',
+      tags: ['assessments'],
+      middleware: [requirePermission('assessments.read')] as const,
+      security: [{ bearerAuth: [] }],
+      request: { params: idParam, query: ReportFormatQuery },
+      responses: {
+        200: {
+          description:
+            'Engagement report (JSON, or Markdown with ?format=markdown). Limitations are part of the report.',
+          content: {
+            'application/json': { schema: EngagementReport },
+            'text/markdown': { schema: z.string() },
+          },
+        },
+        404: err('Not found'),
+        ...common,
+      },
+    }),
+    async (c) => {
+      const report = await svc.report(c.req.valid('param').id, actor(c));
+      if (c.req.valid('query').format === 'markdown') {
+        c.header('content-type', 'text/markdown; charset=utf-8');
+        c.header('cache-control', 'no-store');
+        return c.body(svc.reportMarkdown(report), 200);
+      }
+      return c.json(EngagementReport.parse(report), 200);
+    },
   );
 
   app.openapi(

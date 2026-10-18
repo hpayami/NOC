@@ -171,6 +171,14 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   and a cross-instance alert stream bus (both degrade to per-instance behaviour if Redis is down).
   See `docs/phase7-progress.md` and `docs/deployment-profiles.md`.
 
+## Phase 5 reports
+
+- `GET /api/v1/assessments/engagements/{id}/report` (JSON or Markdown): authorisation, scope,
+  runs, per-technique and per-address coverage, findings (for `findings.read` holders, inside
+  their site scope) and a mandatory limitations list rendered before the findings. Addresses the
+  platform never contacted are reported as not assessed, never as secure. See
+  `docs/phase5-progress.md`.
+
 ## What Phase 0 provides
 
 - **Shared contracts** for every domain entity (users, assets, observations, segments, topology,
@@ -208,7 +216,7 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
 
 ## Roadmap
 
-Phase 1 asset inventory & NOC → Phase 2 NIDS & event pipeline → Phase 3 SOC & IR → Phase 4 NIPS (policy plane delivered) → Phase 5 assessments (engagements + connect-level workers delivered) → Phase 6 ML (advisory baseline delivered) → Phase 7 enterprise (SSO with logout, site scoping, shared rate limiting and alert bus delivered) &
+Phase 1 asset inventory & NOC → Phase 2 NIDS & event pipeline → Phase 3 SOC & IR → Phase 4 NIPS (policy plane delivered) → Phase 5 assessments (engagements, connect-level workers and reports delivered) → Phase 6 ML (advisory baseline delivered) → Phase 7 enterprise (SSO with logout, site scoping, shared rate limiting and alert bus delivered) &
 controlled response → Phase 5 authorized assessment → Phase 6 analytics → Phase 7 enterprise
 readiness. Details: `docs/phase-1-plan.md`, `docs/architecture.md`.
 

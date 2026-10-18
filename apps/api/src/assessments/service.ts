@@ -8,6 +8,10 @@ import {
   evaluateTarget,
   expandTargets,
   findingForOpenPort,
+  renderEngagementReportMarkdown,
+  reportLimitations,
+  targetCoverage,
+  techniqueCoverage,
   validateDiscoveryScope,
   validateEngagementTransition,
   type AssessmentRun,
@@ -15,6 +19,7 @@ import {
   type CreateEngagementRequest,
   type CreateRunRequest,
   type EngagementRecord,
+  type EngagementReport,
   type EngagementStatus,
   type FindingRecord,
   type Permission,
@@ -943,6 +948,79 @@ export class AssessmentService {
       targets: targets.map(toTarget),
       findings: findings.map((f) => toFinding(f)),
     };
+  }
+
+  /**
+   * Engagement report: scope, approvals, runs, per-address coverage and findings, with the
+   * limitations computed from the same records. Findings are included only for holders of
+   * findings.read and only inside the actor's site scope; the export is audited.
+   */
+  async report(engagementId: string, actor: Actor): Promise<EngagementReport> {
+    const engagement = await this.get(engagementId);
+    const runs = await this.listRuns(engagementId);
+    const runTargetRows =
+      runs.length === 0
+        ? []
+        : await this.db
+            .select()
+            .from(assessmentRunTargets)
+            .where(
+              inArray(
+                assessmentRunTargets.runId,
+                runs.map((r) => r.id),
+              ),
+            )
+            .limit(50_000);
+    const findingsIncluded = actor.permissions.has('findings.read');
+    const findings = findingsIncluded
+      ? await this.listFindings(
+          [
+            eq(vulnerabilityFindings.engagementId, engagementId),
+            ...(findingSiteCondition(actor.sites) ? [findingSiteCondition(actor.sites)!] : []),
+          ],
+          2000,
+        )
+      : [];
+    const scopeTargets = expandTargets(engagement.scope);
+    const techniques = techniqueCoverage(engagement.scope.allowedTechniques, runs);
+    const { targets, summary } = targetCoverage({
+      scopeTargets,
+      runs,
+      runTargets: runTargetRows.map((t) => ({ ...toTarget(t), runId: t.runId })),
+      findings,
+    });
+    const report: EngagementReport = {
+      generatedAt: new Date().toISOString(),
+      generatedBy: actor.userId,
+      engagement,
+      techniques,
+      runs,
+      coverage: summary,
+      targets,
+      findings,
+      findingsIncluded,
+      limitations: reportLimitations({
+        engagement,
+        techniques,
+        runs,
+        coverage: summary,
+        findingsIncluded,
+        findings,
+      }),
+    };
+    await this.audit.record(
+      this.auditOf(actor, 'assessments.report', 'assessment_engagement', engagementId, {
+        runs: runs.length,
+        findings: findings.length,
+        findingsIncluded,
+        targets: targets.length,
+      }),
+    );
+    return report;
+  }
+
+  reportMarkdown(report: EngagementReport): string {
+    return renderEngagementReportMarkdown(report);
   }
 
   async listFindings(conds: SQL[], limit: number): Promise<FindingRecord[]> {

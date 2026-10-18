@@ -114,6 +114,12 @@ export default async function EngagementPage({ params }: { params: Promise<{ id:
       </section>
 
       <section className="flex flex-wrap items-center gap-3">
+        <a
+          href={`/red-team/${e.id}/report`}
+          className="rounded-md border border-border px-3 py-1.5 text-sm text-muted hover:text-fg"
+        >
+          {t('eng.report')}
+        </a>
         <TransitionForm
           id={e.id}
           targets={transitionTargets(e.status, perms)}

@@ -70,3 +70,42 @@ External scanners (vulnerability, TLS, web, dependency) and detection validation
 findings carry no CVSS unless an integration supplies it; engagement reports/export; evidence
 store beyond run records. (The per-run asset minting for IP-only observations was closed in
 Phase 7: address-only observations re-attach to the sole holder of the address.)
+
+## Slice 2 — Engagement reports (2026-10-18)
+
+**Delivered**
+
+- `GET /api/v1/assessments/engagements/{id}/report` (`assessments.read`; `?format=markdown` for
+  a shareable rendering). The report is built only from the platform's own records: engagement
+  and authorisation, scope (version, approval state, window), every run, **per-technique
+  status** (`performed` / `dry_run_only` / `not_performed` / `not_executable`), **per-address
+  coverage** for every enumerated in-scope address (`assessed_with_findings`,
+  `assessed_no_findings`, `unreachable`, `denied`, `not_assessed`), addresses probed under an
+  older scope version kept and flagged, findings, and a `limitations` array that is part of the
+  contract. Limitations are generated from the same records (techniques without an executor or
+  without a live run, addresses never probed, run-time denials, non-answers, scope changed after
+  the last live run, unapproved scope, unvalidated findings, interim status) and are rendered
+  **before** the findings in Markdown. Findings appear only for holders of `findings.read` and
+  only inside the requester's site scope; otherwise the report states they are withheld. Every
+  export is audited (`assessments.report`).
+- Pure rules in `packages/shared/src/rules/assessment-report.ts` (`techniqueCoverage`,
+  `targetCoverage`, `reportLimitations`, `renderEngagementReportMarkdown`) so the web app, the
+  API and tests share one definition of "assessed".
+- Web: **Download report (Markdown)** on the engagement page through a BFF route that forwards
+  the session's token; the API decides authorization and content.
+
+**Verified**
+
+Shared: technique status from live runs only; per-address classification including dry-run rows
+ignored, denial reasons kept, out-of-scope probes flagged; limitation sentences; Markdown order
+(limitations before findings), finding and target rows, withheld rendering. API: report after
+four runs — coverage 1/1 with findings, open ports and technique recorded, findings included for
+`findings.read`, Markdown content type and reference line, withheld for a blue-team engineer,
+404 for an unknown engagement, three audited exports. Totals: shared 102, API 98, web 4,
+pytest 8; e2e 5/5.
+
+**Not delivered**
+
+PDF/DOCX export, evidence attachments in the report, per-finding remediation guidance beyond
+the finding record, and signed/hashed report artefacts (the audit row records the export, not a
+digest of its content).
