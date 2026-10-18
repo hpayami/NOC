@@ -89,7 +89,11 @@ export function agentRoutes(deps: Deps) {
       },
     }),
     async (c) => {
-      await service.heartbeat(c.get('sensor')!, c.req.valid('json'));
+      const sensor = c.get('sensor')!;
+      await service.heartbeat(sensor, c.req.valid('json'));
+      // A heartbeat that no longer qualifies the sensor (degraded, lost inline capability) ends
+      // inline prevention right here, before the sensor's next directive fetch.
+      await deps.ips.enforceSensorHealth(new Date(), sensor.sensorId);
       return c.body(null, 204);
     },
   );

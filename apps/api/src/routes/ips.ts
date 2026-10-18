@@ -65,7 +65,7 @@ export function ipsRoutes(deps: Deps, svc: IpsService) {
       const conds: SQL[] = [];
       if (q.sensorId) conds.push(eq(ipsPolicies.sensorId, q.sensorId));
       if (q.status) conds.push(eq(ipsPolicies.status, q.status));
-      await svc.expireDue();
+      await svc.enforce();
       return c.json({ items: await svc.list(conds, q.limit) }, 200);
     },
   );

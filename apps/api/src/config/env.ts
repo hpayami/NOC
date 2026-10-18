@@ -65,6 +65,9 @@ const EnvSchema = z
     OIDC_POST_LOGOUT_REDIRECT_URI: z.string().url().optional(),
     /** Shared rate-limit store for multi-instance deployments; unset = per-instance limits. */
     REDIS_URL: z.string().url().optional(),
+    /** Inline-prevention watchdog: returns sensors to detect-only when they stop qualifying. */
+    IPS_WATCHDOG_ENABLED: bool.default(true),
+    IPS_WATCHDOG_INTERVAL_SECONDS: z.coerce.number().int().min(10).max(600).default(60),
     RETENTION_ENABLED: bool.default(true),
     RETENTION_INTERVAL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
     APP_VERSION: z.string().default('0.1.0-phase1'),

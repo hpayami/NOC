@@ -56,3 +56,40 @@ inline prevention disabled, detect-only reason, no sensor → no proposal form).
 A sensor-side agent that applies the directive (Suricata config/NFQUEUE management), bypass/
 fail-open hardware checks, policy diff/preview, automatic disable on sensor health degradation
 while enabled (currently health is gated at enable time and TTL bounds exposure).
+
+## Slice 2 — Continuation gate and watchdog (2026-10-18)
+
+**Invariant added:** a sensor that is silent, degraded, disabled or no longer inline-capable is
+never left running prevention. The enable gate is now also a **continuation gate**
+(`checkIpsContinuation`, same conditions, same codes), applied for as long as a policy is
+enabled.
+
+**Delivered**
+
+- `IpsService.enforceSensorHealth`: every enabled policy is re-checked against the continuation
+  gate; a failing sensor is returned to detect-only immediately (policy `disabled`,
+  `disableCause = sensor_unhealthy`, reason names the failed condition, sensor mode back to
+  out-of-band, version bumped so the sensor acknowledges the change). Audited as
+  `ips.auto_disable` by `system:ips`. `enforce()` = TTL expiry + watchdog, run on every
+  directive fetch and policy list.
+- Triggers: (1) **every sensor heartbeat** — a heartbeat reporting `degraded`/`failed` or
+  `inlineCapable: false` ends prevention in the same request, before the sensor's next
+  directive fetch; (2) the **`IpsWatchdog` scheduler** (`IPS_WATCHDOG_ENABLED`,
+  `IPS_WATCHDOG_INTERVAL_SECONDS`, default 60 s) — the only thing that can catch a sensor that
+  stopped sending anything at all; (3) lazily on every directive fetch and policy list.
+- Contract: `IpsPolicy.disableCause` (`manual` / `expired` / `sensor_unhealthy`); web NIPS page
+  marks automatic disables. Schema (`0015_phase4_ips_watchdog`): `ips_policies.disable_cause`.
+
+**Verified**
+
+Shared: continuation gate accepts a healthy sensor and refuses each of degraded, unknown health,
+stale heartbeat, no heartbeat, not inline-capable, disabled, non-Suricata. API: degraded
+heartbeat drops the policy in the heartbeat request (cause, reason, sensor mode, directive
+`ids`); lost inline capability likewise; silence is untouched until the watchdog tick, which
+drops exactly one policy and is idempotent; a healthy sensor is left alone; a manual kill switch
+records `manual`; three `ips.auto_disable` audit rows by `system:ips`. Totals: shared 103,
+API 99, web 4, pytest 8; e2e 5/5.
+
+**Still not delivered**
+
+Sensor-side agent applying the directive, bypass/fail-open hardware checks, policy diff/preview.

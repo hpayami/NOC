@@ -3,6 +3,8 @@ import {
   IPS_MAX_ENABLE_HOURS,
   ProposeIpsPolicyRequest,
   SensorIpsDirective,
+  checkIpsContinuation,
+  type IpsSensorState,
   checkIpsEnable,
   publicCidrs,
 } from '../src';
@@ -89,5 +91,30 @@ describe('inline prevention enable gate', () => {
       issuedAt: now.toISOString(),
     });
     expect(d.success).toBe(false);
+  });
+
+  it('continuation gate drops inline prevention as soon as the sensor stops qualifying', () => {
+    const healthy: IpsSensorState = {
+      enabled: true,
+      inlineCapable: true,
+      kind: 'suricata',
+      lastHeartbeatAt: new Date(now.getTime() - 30_000),
+      latestHealthState: 'healthy',
+    };
+    expect(checkIpsContinuation({ sensor: healthy, now })).toEqual({ ok: true });
+    const cases: Array<[Partial<IpsSensorState>, string]> = [
+      [{ latestHealthState: 'degraded' }, 'sensor_unhealthy'],
+      [{ latestHealthState: null }, 'sensor_unhealthy'],
+      [{ lastHeartbeatAt: new Date(now.getTime() - 301_000) }, 'sensor_silent'],
+      [{ lastHeartbeatAt: null }, 'sensor_silent'],
+      [{ inlineCapable: false }, 'not_inline_capable'],
+      [{ enabled: false }, 'sensor_disabled'],
+      [{ kind: 'zeek' }, 'sensor_kind'],
+    ];
+    for (const [over, code] of cases)
+      expect(checkIpsContinuation({ sensor: { ...healthy, ...over }, now })).toMatchObject({
+        ok: false,
+        code,
+      });
   });
 });

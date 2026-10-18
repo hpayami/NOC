@@ -135,7 +135,9 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   ranges must be private; rules must be validated. Expiry returns the sensor to detect-only.
 - Sensors fetch `GET /api/v1/agents/ips-directive` (fail-open by contract) and acknowledge the
   applied version; `nips.inline_prevention` is reported from enabled **and acknowledged**
-  policies only. Web **NIPS Policies** page. See `docs/phase4-progress.md`.
+  policies only. A **continuation gate** returns the sensor to detect-only on its own the moment
+  it reports degraded health or loses inline capability, and a watchdog catches sensors that go
+  silent. Web **NIPS Policies** page. See `docs/phase4-progress.md`.
 
 ## Phase 5 progress (authorised assessments)
 

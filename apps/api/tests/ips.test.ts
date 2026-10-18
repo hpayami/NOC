@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
+import pino from 'pino';
+import { IpsWatchdog } from '../src/ips/service';
 import { IpsPolicy, PlatformStatus, SensorIpsDirective } from '@noc/shared';
 import {
   authed,
@@ -393,5 +395,102 @@ describe('inline prevention policy plane', () => {
     expect(audit.items.find((e: { action: string }) => e.action === 'ips.expire').actorLabel).toBe(
       'system:ips',
     );
+  });
+
+  it('returns a sensor to detect-only on its own when it degrades or goes silent while inline', async () => {
+    await post(`/api/v1/detection-rules/${ruleId}/validate`, blue);
+    const approveAndEnable = async (name: string) => {
+      const p = IpsPolicy.parse(
+        await jsonOf(await post('/api/v1/ips/policies', blue, proposal({ name }))),
+      );
+      for (const [tok, why] of [
+        [sec1, 'Scope is the server VLAN only; rule validated'],
+        [sec2, 'Concur; change window agreed'],
+      ] as const)
+        await post(`/api/v1/ips/policies/${p.id}/approve`, tok, { justification: why });
+      await heartbeat(sensor.cred);
+      const live = IpsPolicy.parse(
+        await jsonOf(
+          await post(`/api/v1/ips/policies/${p.id}/enable`, blue, { enabledForHours: 4 }),
+        ),
+      );
+      expect(live.status).toBe('enabled');
+      return p.id;
+    };
+    const policy = async (id: string) =>
+      jsonOf(await h.app.request(`/api/v1/ips/policies/${id}`, { headers: authed(auditor) }));
+    const sensorMode = async () =>
+      (
+        await jsonOf(
+          await h.app.request(`/api/v1/sensors/${sensor.id}/status`, {
+            headers: authed(admin.token),
+          }),
+        )
+      ).sensor.mode;
+    const directive = async () =>
+      (
+        await jsonOf(
+          await h.app.request('/api/v1/agents/ips-directive', { headers: asSensor(sensor.cred) }),
+        )
+      ).mode;
+
+    // 1. Degraded heartbeat while inline: dropped at the heartbeat, before any directive fetch.
+    const first = await approveAndEnable('watchdog-degraded');
+    expect(await sensorMode()).toBe('inline_prevention');
+    expect((await heartbeat(sensor.cred, { state: 'degraded' })).status).toBe(204);
+    expect(await policy(first)).toMatchObject({
+      status: 'disabled',
+      disableCause: 'sensor_unhealthy',
+      disabledBy: null,
+    });
+    expect((await policy(first)).disableReason).toMatch(/sensor_unhealthy/);
+    expect(await sensorMode()).toBe('out_of_band');
+    expect(await directive()).toBe('ids');
+
+    // 2. Lost inline capability: same outcome.
+    const second = await approveAndEnable('watchdog-capability');
+    await heartbeat(sensor.cred, { inlineCapable: false });
+    expect(await policy(second)).toMatchObject({
+      status: 'disabled',
+      disableCause: 'sensor_unhealthy',
+    });
+    expect((await policy(second)).disableReason).toMatch(/not_inline_capable/);
+
+    // 3. Silence: no heartbeat arrives to trigger anything, so the watchdog tick must catch it.
+    const third = await approveAndEnable('watchdog-silent');
+    await h.handle.db.execute(
+      sql`update sensors set last_heartbeat_at = now() - interval '10 minutes' where id = ${sensor.id}`,
+    );
+    expect(await policy(third)).toMatchObject({ status: 'enabled' }); // nothing ran yet
+    const watchdog = new IpsWatchdog(h.ips, {
+      intervalSeconds: 60,
+      logger: pino({ level: 'silent' }),
+    });
+    expect(await watchdog.tick()).toEqual({ expired: 0, autoDisabled: 1 });
+    expect(await policy(third)).toMatchObject({
+      status: 'disabled',
+      disableCause: 'sensor_unhealthy',
+    });
+    expect((await policy(third)).disableReason).toMatch(/sensor_silent/);
+    expect(await watchdog.tick()).toEqual({ expired: 0, autoDisabled: 0 }); // idempotent
+
+    // 4. A healthy, heartbeating sensor is left alone; a manual kill switch keeps cause=manual.
+    const fourth = await approveAndEnable('watchdog-healthy');
+    expect(await watchdog.tick()).toEqual({ expired: 0, autoDisabled: 0 });
+    expect(await policy(fourth)).toMatchObject({ status: 'enabled' });
+    await post(`/api/v1/ips/policies/${fourth}/disable`, sec1, { reason: 'Change window closed' });
+    expect(await policy(fourth)).toMatchObject({ status: 'disabled', disableCause: 'manual' });
+
+    const audit = await jsonOf(
+      await h.app.request('/api/v1/audit?limit=100', { headers: authed(admin.token) }),
+    );
+    const auto = audit.items.filter((e: { action: string }) => e.action === 'ips.auto_disable');
+    expect(auto).toHaveLength(3);
+    expect(auto.every((e: { actorLabel: string }) => e.actorLabel === 'system:ips')).toBe(true);
+    expect(auto.map((e: { metadata: { cause: string } }) => e.metadata.cause)).toEqual([
+      'sensor_unhealthy',
+      'sensor_unhealthy',
+      'sensor_unhealthy',
+    ]);
   });
 });

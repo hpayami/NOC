@@ -1,11 +1,14 @@
 import { HTTPException } from 'hono/http-exception';
+import type { Logger } from 'pino';
 import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import {
   checkApproval,
+  checkIpsContinuation,
   checkIpsEnable,
   publicCidrs,
   requiredApprovals,
   type IpsAckRequest,
+  type IpsDisableCause,
   type IpsPolicy,
   type Permission,
   type ProposeIpsPolicyRequest,
@@ -55,6 +58,7 @@ const toPolicy = (p: PolicyRow, sensorName: string, aps: ApprovalRow[]): IpsPoli
   disabledBy: p.disabledBy,
   disabledAt: p.disabledAt?.toISOString() ?? null,
   disableReason: p.disableReason,
+  disableCause: (p.disableCause as IpsPolicy['disableCause']) ?? null,
   applyState: p.applyState,
   appliedVersion: p.appliedVersion,
   appliedAt: p.appliedAt?.toISOString() ?? null,
@@ -303,6 +307,7 @@ export class IpsService {
           disabledBy: null,
           disabledAt: null,
           disableReason: null,
+          disableCause: null,
           applyState: 'pending',
           updatedAt: now,
         })
@@ -343,7 +348,7 @@ export class IpsService {
     id: string,
     reason: string,
     actor: Actor | null,
-    cause: 'manual' | 'expired' = 'manual',
+    cause: IpsDisableCause = 'manual',
   ): Promise<IpsPolicy> {
     const now = new Date();
     const row = await this.db.transaction(async (tx) => {
@@ -359,16 +364,24 @@ export class IpsService {
           disabledBy: actor?.userId ?? null,
           disabledAt: now,
           disableReason: reason,
+          disableCause: cause,
           applyState: 'pending',
           updatedAt: now,
         })
         .where(eq(ipsPolicies.id, id))
         .returning();
       await tx.update(sensors).set({ mode: 'out_of_band' }).where(eq(sensors.id, cur.sensorId));
+      const action =
+        cause === 'expired'
+          ? 'ips.expire'
+          : cause === 'sensor_unhealthy'
+            ? 'ips.auto_disable'
+            : 'ips.disable';
       await this.audit.record(
-        this.auditOf(actor, cause === 'expired' ? 'ips.expire' : 'ips.disable', id, {
+        this.auditOf(actor, action, id, {
           sensorId: cur.sensorId,
           reason,
+          cause,
           version: updated!.version,
         }),
         tx,
@@ -376,6 +389,60 @@ export class IpsService {
       return updated!;
     });
     return toPolicy(row, await this.sensorName(row.sensorId), await this.approvalsOf(id));
+  }
+
+  /**
+   * Watchdog: every enabled policy is re-checked against the continuation gate (sensor enabled,
+   * inline-capable, heartbeating within the window, last health `healthy`). A sensor that stops
+   * qualifying is returned to detect-only immediately, audited as `system:ips`. Runs on every
+   * sensor heartbeat, on every directive fetch and policy list, and on the scheduler.
+   */
+  async enforceSensorHealth(now = new Date(), sensorId?: string): Promise<number> {
+    const enabled = await this.db
+      .select({ policyId: ipsPolicies.id, sensor: sensors })
+      .from(ipsPolicies)
+      .innerJoin(sensors, eq(sensors.id, ipsPolicies.sensorId))
+      .where(
+        and(
+          eq(ipsPolicies.status, 'enabled'),
+          sensorId ? eq(ipsPolicies.sensorId, sensorId) : undefined,
+        ),
+      );
+    let dropped = 0;
+    for (const e of enabled) {
+      const [latest] = await this.db
+        .select({ state: sensorHealth.state })
+        .from(sensorHealth)
+        .where(eq(sensorHealth.sensorId, e.sensor.id))
+        .orderBy(desc(sensorHealth.recordedAt))
+        .limit(1);
+      const check = checkIpsContinuation({
+        sensor: {
+          enabled: e.sensor.enabled,
+          inlineCapable: e.sensor.inlineCapable,
+          kind: e.sensor.kind,
+          lastHeartbeatAt: e.sensor.lastHeartbeatAt,
+          latestHealthState: latest?.state ?? null,
+        },
+        now,
+      });
+      if (check.ok) continue;
+      await this.disable(
+        e.policyId,
+        `Sensor no longer qualifies for inline prevention (${check.code}: ${check.message}); detect-only enforced automatically`,
+        null,
+        'sensor_unhealthy',
+      ).catch(() => undefined);
+      dropped++;
+    }
+    return dropped;
+  }
+
+  /** TTL expiry plus the sensor-health watchdog, in that order. */
+  async enforce(now = new Date()): Promise<{ expired: number; autoDisabled: number }> {
+    const expired = await this.expireDue(now);
+    const autoDisabled = await this.enforceSensorHealth(now);
+    return { expired, autoDisabled };
   }
 
   /** Expires every enabled policy past its TTL; sensors fall back to detect-only on their next fetch. */
@@ -398,7 +465,7 @@ export class IpsService {
 
   /** What a sensor should run right now. Default is detect-only and fail-open. */
   async directiveFor(sensorId: string, now = new Date()): Promise<SensorIpsDirective> {
-    await this.expireDue(now);
+    await this.enforce(now);
     const [p] = await this.db
       .select()
       .from(ipsPolicies)
@@ -533,5 +600,44 @@ export class IpsService {
       .innerJoin(sensors, eq(sensors.id, ipsPolicies.sensorId))
       .where(eq(ipsPolicies.status, 'enabled'));
     return rows;
+  }
+}
+
+/** Periodic safety net for the continuation gate: a silent sensor sends no heartbeat to trigger it. */
+export class IpsWatchdog {
+  private timer: NodeJS.Timeout | null = null;
+  private running = false;
+
+  constructor(
+    private readonly svc: IpsService,
+    private readonly opts: { intervalSeconds: number; logger: Logger },
+  ) {}
+
+  start(): void {
+    if (this.timer) return;
+    this.timer = setInterval(() => void this.tick(), this.opts.intervalSeconds * 1000);
+    this.timer.unref();
+    this.opts.logger.info({ intervalSeconds: this.opts.intervalSeconds }, 'ips watchdog started');
+  }
+
+  stop(): void {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  async tick(): Promise<{ expired: number; autoDisabled: number }> {
+    if (this.running) return { expired: 0, autoDisabled: 0 };
+    this.running = true;
+    try {
+      const r = await this.svc.enforce();
+      if (r.expired || r.autoDisabled)
+        this.opts.logger.warn(r, 'ips watchdog: sensors returned to detect-only');
+      return r;
+    } catch (err) {
+      this.opts.logger.error({ err }, 'ips watchdog tick failed');
+      return { expired: 0, autoDisabled: 0 };
+    } finally {
+      this.running = false;
+    }
   }
 }

@@ -21,6 +21,11 @@ export const IpsPolicyStatusValues = [
 export const IpsPolicyStatus = z.enum(IpsPolicyStatusValues);
 export type IpsPolicyStatus = z.infer<typeof IpsPolicyStatus>;
 
+/** Why an enabled policy stopped: operator kill switch, TTL, or the sensor stopped qualifying. */
+export const IpsDisableCauseValues = ['manual', 'expired', 'sensor_unhealthy'] as const;
+export const IpsDisableCause = z.enum(IpsDisableCauseValues);
+export type IpsDisableCause = z.infer<typeof IpsDisableCause>;
+
 export const IpsApplyStateValues = ['none', 'pending', 'applied', 'failed'] as const;
 export const IpsApplyState = z.enum(IpsApplyStateValues);
 export type IpsApplyState = z.infer<typeof IpsApplyState>;
@@ -90,6 +95,7 @@ export const IpsPolicy = z.strictObject({
   disabledBy: Id.nullable(),
   disabledAt: Timestamp.nullable(),
   disableReason: LongText.nullable(),
+  disableCause: IpsDisableCause.nullable(),
   /** What the sensor last acknowledged; `pending` until the sensor confirms the current version. */
   applyState: IpsApplyState,
   appliedVersion: z.number().int().nonnegative().nullable(),

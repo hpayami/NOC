@@ -106,6 +106,13 @@
       "when": 1792339462844,
       "tag": "0014_phase7_oidc_logout",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1792341763060,
+      "tag": "0015_phase4_ips_watchdog",
+      "breakpoints": true
     }
   ]
 }

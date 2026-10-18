@@ -123,6 +123,7 @@ export default async function NipsPage() {
                 {p.disableReason ? (
                   <p className="mt-1 text-[11px] text-muted">
                     {t('nips.disabled_reason')}: {p.disableReason}
+                    {p.disableCause === 'sensor_unhealthy' ? ` (${t('nips.auto_disabled')})` : ''}
                   </p>
                 ) : null}
                 {p.status === 'pending_approval' && perms.has('ips.approve') ? (

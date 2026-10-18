@@ -12,7 +12,7 @@ import { RedisAlertBus } from './events/redis-bus';
 import { AvailabilityService, MonitoringScheduler } from './monitoring/service';
 import { createMetrics } from './platform/metrics';
 import { syncRbacCatalog } from './platform/seed';
-import { IpsService } from './ips/service';
+import { IpsService, IpsWatchdog } from './ips/service';
 import { MlService } from './ml/service';
 import { RetentionScheduler, RetentionService } from './retention/service';
 import { TokenService } from './security/tokens';
@@ -70,6 +70,11 @@ async function main() {
     logger,
   });
   if (env.RETENTION_ENABLED) retentionScheduler.start();
+  const ipsWatchdog = new IpsWatchdog(deps.ips, {
+    intervalSeconds: env.IPS_WATCHDOG_INTERVAL_SECONDS,
+    logger,
+  });
+  if (env.IPS_WATCHDOG_ENABLED) ipsWatchdog.start();
 
   const server = serve({ fetch: app.fetch, hostname: env.API_HOST, port: env.API_PORT }, (info) => {
     logger.info({ host: info.address, port: info.port, env: env.NODE_ENV }, 'noc-api listening');
@@ -79,6 +84,7 @@ async function main() {
     logger.info({ signal }, 'shutting down');
     scheduler.stop();
     retentionScheduler.stop();
+    ipsWatchdog.stop();
     if (deps.bus instanceof RedisAlertBus) deps.bus.close();
     if (deps.limiter instanceof RedisRateLimiter) deps.limiter.close();
     server.close();

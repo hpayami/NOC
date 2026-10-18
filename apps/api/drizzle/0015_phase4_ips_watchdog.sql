@@ -1,0 +1,1 @@
+ALTER TABLE "ips_policies" ADD COLUMN "disable_cause" text;

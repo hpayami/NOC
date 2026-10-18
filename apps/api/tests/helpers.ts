@@ -32,6 +32,7 @@ export interface Harness {
   handle: DbHandle;
   env: Env;
   limiter: RateLimiter;
+  ips: IpsService;
   close: () => Promise<void>;
 }
 
@@ -53,6 +54,7 @@ export async function createHarness(
   await syncRbacCatalog(handle.db);
   const limiter = new RateLimiter();
   const audit = new AuditService(handle.db);
+  const ips = new IpsService(handle.db, audit);
   const app = createApp({
     env,
     db: handle.db,
@@ -63,7 +65,7 @@ export async function createHarness(
     metrics: createMetrics(),
     bus: new AlertBus(),
     retention: new RetentionService(handle.db, audit, { batchSize: 2, maxBatchesPerDataset: 3 }),
-    ips: new IpsService(handle.db, audit),
+    ips,
     ml: new MlService(handle.db, audit, pino({ level: 'silent' }), {
       url: env.ANALYSIS_URL,
       token: env.ANALYSIS_INTERNAL_TOKEN ?? null,
@@ -72,7 +74,7 @@ export async function createHarness(
     }),
     oidc: new OidcService(handle.db, audit, oidcConfigFromEnv(env)),
   });
-  return { app, handle, env, limiter, close: () => handle.close() };
+  return { app, handle, env, limiter, ips, close: () => handle.close() };
 }
 
 export async function resetDatabase(handle: DbHandle): Promise<void> {

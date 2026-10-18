@@ -57,6 +57,8 @@ export const ipsPolicies = pgTable(
     disabledBy: uuid('disabled_by').references(() => users.id, { onDelete: 'set null' }),
     disabledAt: ts('disabled_at'),
     disableReason: text('disable_reason'),
+    /** manual | expired | sensor_unhealthy */
+    disableCause: text('disable_cause'),
     applyState: ipsApplyStateEnum('apply_state').notNull().default('none'),
     appliedVersion: integer('applied_version'),
     appliedAt: ts('applied_at'),

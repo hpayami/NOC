@@ -43,5 +43,8 @@ Never report "zero packet loss" or "complete visibility" without counters from t
   sessions are needed. Delivery is at-most-once (the stream is a nudge to re-fetch); if Redis
   drops, each instance keeps serving its own alerts and reconnects with backoff. Without
   `REDIS_URL` the bus is in-process and an instance only pushes what it ingested itself.
-- Schedulers (monitoring checks, retention, IPS expiry) are idempotent but run on every instance;
-  set `MONITORING_SCHEDULER_ENABLED=false` / `RETENTION_ENABLED=false` on all but one.
+- Schedulers (monitoring checks, retention, the IPS watchdog) are idempotent but run on every
+  instance; set `MONITORING_SCHEDULER_ENABLED=false` / `RETENTION_ENABLED=false` on all but one.
+  Keep `IPS_WATCHDOG_ENABLED=true` on at least one instance: it is the only path that returns a
+  **silent** inline sensor to detect-only (degraded heartbeats are handled in-request on any
+  instance).
