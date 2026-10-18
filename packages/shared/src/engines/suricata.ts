@@ -208,5 +208,11 @@ export function normalizeEveRecord(
 /** Title shown in the alert queue for a detection event. */
 export function alertTitleFor(event: NormalizedEvent): string {
   const alert = event.engine.alert as { signature?: string } | undefined;
-  return (alert?.signature ?? `${event.sourceProduct} ${event.type}`).slice(0, 256);
+  const notice = event.engine.notice as { msg?: string; note?: string } | undefined;
+  return (
+    alert?.signature ??
+    notice?.msg ??
+    notice?.note ??
+    `${event.sourceProduct} ${event.type}`
+  ).slice(0, 256);
 }

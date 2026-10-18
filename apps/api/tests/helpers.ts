@@ -2,6 +2,7 @@ import pino from 'pino';
 import { sql } from 'drizzle-orm';
 import { createApp, type App } from '../src/app';
 import { AuditService } from '../src/audit/service';
+import { AlertBus } from '../src/events/bus';
 import { loadEnv, type Env } from '../src/config/env';
 import { createDb, type DbHandle } from '../src/db/client';
 import { RateLimiter } from '../src/middleware/rate-limit';
@@ -55,6 +56,7 @@ export async function createHarness(
     audit: new AuditService(handle.db),
     limiter,
     metrics: createMetrics(),
+    bus: new AlertBus(),
   });
   return { app, handle, env, limiter, close: () => handle.close() };
 }

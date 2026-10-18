@@ -5,6 +5,7 @@ import { AuditService } from './audit/service';
 import { loadEnv } from './config/env';
 import { createDb } from './db/client';
 import { RateLimiter } from './middleware/rate-limit';
+import { AlertBus } from './events/bus';
 import { AvailabilityService, MonitoringScheduler } from './monitoring/service';
 import { createMetrics } from './platform/metrics';
 import { syncRbacCatalog } from './platform/seed';
@@ -38,6 +39,7 @@ async function main() {
     audit: new AuditService(handle.db),
     limiter: new RateLimiter(),
     metrics: createMetrics(),
+    bus: new AlertBus(),
   };
   const app = createApp(deps);
 

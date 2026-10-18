@@ -124,7 +124,7 @@ export const NAV: NavItem[] = [
     capabilities: ['nids.suricata'],
     permission: 'detection_rules.read',
     phase: 2,
-    implemented: false,
+    implemented: true,
   },
   {
     slug: 'ml-analytics',

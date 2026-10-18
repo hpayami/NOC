@@ -21,5 +21,8 @@ export * from './rules/discovery';
 export * from './entities/agents';
 export * from './parsers/neighbors';
 export * from './engines/suricata';
+export * from './engines/zeek';
+export * from './engines/suricata-rules';
+export * from './entities/rules';
 export * from './rules/alert-state';
 export * from './entities/ingest';

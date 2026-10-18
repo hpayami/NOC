@@ -100,6 +100,14 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
 - `GET /api/v1/events` (bounded), `/events/stats`, `/alerts` with audited triage (`PATCH`).
 - Web **SOC Alerts** and **NIDS Monitoring** pages. `nids.suricata` capability is dynamic:
   it is `available` only while registered sensors deliver events.
+- `POST /api/v1/ingest/zeek/logs[?path=]`: Zeek JSON logs normalized into the same envelope;
+  notices become detections, flows share correlation ids with Suricata (`community_id`, uid).
+  `GET /api/v1/events/correlated?correlationId=` joins them. `nsm.zeek` is dynamic too.
+- `/api/v1/detection-rules`: Suricata rule import with a **declared licence and source**
+  (idempotent, revision-aware, disabled rules kept as disabled), validation lifecycle, and
+  alert → rule linkage. Nothing is fetched from upstream automatically.
+- `GET /api/v1/alerts/stream`: SSE push of alert create/update/triage; the web shell proxies it
+  so the SOC queue refreshes live. Web **Detection Engineering** page.
 
 ## What Phase 0 provides
 

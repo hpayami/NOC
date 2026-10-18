@@ -45,6 +45,13 @@ export const detectionRules = pgTable(
     contentSha256: text('content_sha256').notNull(),
     validatedAt: ts('validated_at'),
     deployedAt: ts('deployed_at'),
+    enabled: boolean('enabled').notNull().default(true),
+    action: text('action'),
+    classtype: text('classtype'),
+    ruleSet: text('rule_set'),
+    /** The rule text as imported (bounded). Never contains payload data. */
+    content: text('content'),
+    importedBy: uuid('imported_by'),
     createdAt: ts('created_at').notNull().defaultNow(),
   },
   (t) => [
@@ -95,6 +102,7 @@ export const securityEvents = pgTable(
     index('security_events_dst_ip_time_idx').on(t.dstIp, t.eventTime),
     index('security_events_src_asset_time_idx').on(t.srcAssetId, t.eventTime),
     index('security_events_incident_idx').on(t.incidentId),
+    index('security_events_correlation_gin_idx').using('gin', t.correlationIds),
   ],
 );
 

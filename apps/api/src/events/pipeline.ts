@@ -6,6 +6,8 @@ import {
   alertTitleFor,
   computeAlertPriority,
   normalizeEveRecord,
+  normalizeZeekRecord,
+  type AlertStreamEvent,
   type IngestReport,
   type NormalizedEvent,
 } from '@noc/shared';
@@ -13,6 +15,8 @@ import { HTTPException } from 'hono/http-exception';
 import type { Db } from '../db/client';
 import { alerts, assets, securityEvents, sensors } from '../db/schema';
 import type { Metrics } from '../platform/metrics';
+import type { AlertBus } from './bus';
+import { resolveRuleIds } from '../rules/service';
 
 export interface IngestSource {
   sensorId: string;
@@ -71,9 +75,27 @@ export class EventPipeline {
   constructor(
     private readonly db: Db,
     private readonly metrics: Metrics,
+    private readonly bus: AlertBus,
   ) {}
 
   async ingestEve(body: string, source: IngestSource): Promise<IngestReport> {
+    return this.ingest(body, source, 'suricata');
+  }
+
+  async ingestZeek(
+    body: string,
+    source: IngestSource,
+    defaultPath?: string,
+  ): Promise<IngestReport> {
+    return this.ingest(body, source, 'zeek', defaultPath);
+  }
+
+  async ingest(
+    body: string,
+    source: IngestSource,
+    product: 'suricata' | 'zeek',
+    defaultPath?: string,
+  ): Promise<IngestReport> {
     const records = splitRecords(body).filter((r) => r.error !== 'empty_line');
     if (records.length > INGEST_MAX_RECORDS)
       throw new HTTPException(413, {
@@ -102,11 +124,15 @@ export class EventPipeline {
         reject(r.index, r.error);
         continue;
       }
-      const n = normalizeEveRecord(r.raw, {
+      const ctx = {
         sensorId: source.sensorId,
         eventId: randomUUID(),
         ingestTime: ingestTime.toISOString(),
-      });
+      };
+      const n =
+        product === 'suricata'
+          ? normalizeEveRecord(r.raw, ctx)
+          : normalizeZeekRecord(r.raw, { ...ctx, defaultPath });
       if (!n.ok) reject(r.index, n.reason);
       else events.push(n.event);
     }
@@ -187,7 +213,7 @@ export class EventPipeline {
     }
 
     // Alert queue: one open alert per (sensor, rule, src, dst); repeats bump the counter.
-    const detections = fresh.filter((e) => e.type === 'alert' && e.ruleId);
+    const detections = fresh.filter((e) => e.category === 'detection' && e.ruleId);
     if (detections.length) {
       const assetIds = [
         ...new Set(
@@ -201,6 +227,10 @@ export class EventPipeline {
           .from(assets)
           .where(inArray(assets.id, assetIds)))
           crit.set(a.id, a.criticality);
+      const ruleIds = await resolveRuleIds(
+        this.db,
+        detections.map((e) => e.ruleId!),
+      );
       for (const e of detections) {
         const key = `${source.sensorId}:${e.ruleId}:${e.srcIp ?? '-'}:${e.dstIp ?? '-'}`;
         const assetId = e.dstAssetId ?? e.srcAssetId ?? null;
@@ -230,31 +260,56 @@ export class EventPipeline {
             })
             .where(eq(alerts.id, open.id));
           report.alertsUpdated++;
-        } else {
-          await this.db.insert(alerts).values({
-            title: alertTitleFor(e),
-            status: 'new',
+          this.publish({
+            kind: 'updated',
+            alertId: open.id,
             severity: e.severity,
-            confidence: e.confidence,
-            priorityScore: priority,
-            ruleId: null,
-            ruleRef: e.ruleId,
-            sourceProduct: 'suricata',
-            sourceSensorId: source.sensorId,
-            assetId,
-            srcIp: e.srcIp,
-            dstIp: e.dstIp,
-            dedupKey: key,
-            occurrenceCount: 1,
-            firstSeenAt: eventTime,
-            lastSeenAt: eventTime,
-            lastEventId: e.eventId,
+            title: alertTitleFor(e),
+            at: ingestTime.toISOString(),
           });
+        } else {
+          const [created] = await this.db
+            .insert(alerts)
+            .values({
+              title: alertTitleFor(e),
+              status: 'new',
+              severity: e.severity,
+              confidence: e.confidence,
+              priorityScore: priority,
+              ruleId: ruleIds.get(e.ruleId!) ?? null,
+              ruleRef: e.ruleId,
+              sourceProduct: product,
+              sourceSensorId: source.sensorId,
+              assetId,
+              srcIp: e.srcIp,
+              dstIp: e.dstIp,
+              dedupKey: key,
+              occurrenceCount: 1,
+              firstSeenAt: eventTime,
+              lastSeenAt: eventTime,
+              lastEventId: e.eventId,
+            })
+            .returning({ id: alerts.id });
           report.alertsCreated++;
+          this.publish({
+            kind: 'created',
+            alertId: created!.id,
+            severity: e.severity,
+            title: alertTitleFor(e),
+            at: ingestTime.toISOString(),
+          });
           this.metrics.alertsCreated.inc({ severity: e.severity });
         }
       }
     }
     return report;
+  }
+
+  private publish(ev: AlertStreamEvent): void {
+    try {
+      this.bus.publish(ev);
+    } catch {
+      /* a failing subscriber must never fail ingestion */
+    }
   }
 }

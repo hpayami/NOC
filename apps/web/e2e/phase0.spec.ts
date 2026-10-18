@@ -114,6 +114,10 @@ test.describe('Phase 0 shell', () => {
     await page.goto('/nids');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('پایش NIDS');
     await expect(page.getByText('هیچ سنسور Suricata/Zeek ثبت نشده است.')).toBeVisible();
+    // Detection engineering: rule registry is empty until rules are imported; nothing fabricated.
+    await page.goto('/detection-engineering');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('مهندسی تشخیص');
+    await expect(page.getByText('هنوز قاعده‌ای وارد نشده است.')).toBeVisible();
     // Analysts cannot administer users: forbidden page, not a crash.
     await page.goto('/administration');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('دسترسی مجاز نیست');

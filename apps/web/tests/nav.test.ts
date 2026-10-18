@@ -24,6 +24,7 @@ describe('navigation and i18n', () => {
       'assets',
       'audit-logs',
       'command-center',
+      'detection-engineering',
       'nids',
       'noc',
       'sensors',

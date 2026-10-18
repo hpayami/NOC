@@ -11,6 +11,7 @@ import { rateLimit } from './middleware/rate-limit';
 import { agentRoutes } from './routes/agents';
 import { alertRoutes, eventRoutes } from './routes/alerts';
 import { ingestRoutes } from './routes/ingest';
+import { ruleRoutes } from './routes/rules';
 import { assetRoutes } from './routes/assets';
 import { authRoutes } from './routes/auth';
 import { collectorRoutes } from './routes/collectors';
@@ -69,8 +70,11 @@ export function createApp(deps: Deps) {
       },
     });
   app.use('/api/v1/ingest/*', limitFor(env.INGEST_BODY_LIMIT_BYTES));
+  app.use('/api/v1/detection-rules/import', limitFor(env.INGEST_BODY_LIMIT_BYTES));
   app.use('*', async (c, next) =>
-    c.req.path.startsWith('/api/v1/ingest/') ? next() : limitFor(env.BODY_LIMIT_BYTES)(c, next),
+    c.req.path.startsWith('/api/v1/ingest/') || c.req.path === '/api/v1/detection-rules/import'
+      ? next()
+      : limitFor(env.BODY_LIMIT_BYTES)(c, next),
   );
   app.use('*', async (c, next) => {
     const end = metrics.httpDuration.startTimer({ method: c.req.method, route: c.req.routePath });
@@ -105,6 +109,7 @@ export function createApp(deps: Deps) {
   app.route('/api/v1/ingest', ingestRoutes(deps));
   app.route('/api/v1/alerts', alertRoutes(deps));
   app.route('/api/v1/events', eventRoutes(deps));
+  app.route('/api/v1/detection-rules', ruleRoutes(deps));
   app.route('/api/v1/platform', platformRoutes(deps));
   app.route('/api/v1/audit', auditRoutes(deps));
 

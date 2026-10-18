@@ -237,6 +237,10 @@ export function platformRoutes(deps: Deps) {
             .select({ enabled: sensors.enabled, lastEventAt: sensors.lastEventAt })
             .from(sensors)
             .where(sql`${sensors.kind} = 'suricata'`),
+          zeekSensors: await deps.db
+            .select({ enabled: sensors.enabled, lastEventAt: sensors.lastEventAt })
+            .from(sensors)
+            .where(sql`${sensors.kind} = 'zeek'`),
           now: new Date(),
         }),
         metrics,

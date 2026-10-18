@@ -1,5 +1,6 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { HTTPException } from 'hono/http-exception';
+import { streamSSE } from 'hono/streaming';
 import { and, count, desc, eq, gte, lte, notInArray, sql, type SQL } from 'drizzle-orm';
 import {
   Alert,
@@ -13,6 +14,7 @@ import {
   NormalizedEvent,
   SeverityValues,
   validateAlertTransition,
+  type AlertStreamEvent,
 } from '@noc/shared';
 import type { Deps } from '../app-deps';
 import { alerts, securityEvents, sensors } from '../db/schema';
@@ -86,8 +88,45 @@ function decodeCursor(c: string): { at: Date; id: string } {
 }
 
 export function alertRoutes(deps: Deps) {
-  const { db, audit } = deps;
+  const { db, audit, bus } = deps;
   const app = new OpenAPIHono<AppEnv>();
+
+  /** Server-sent events: `ready` on connect, `alert` per change, comment heartbeats every 15 s. */
+  app.get('/stream', requirePermission('alerts.read'), (c) =>
+    streamSSE(c, async (stream) => {
+      const queue: AlertStreamEvent[] = [];
+      let wake: (() => void) | null = null;
+      const unsubscribe = bus.subscribe((ev) => {
+        queue.push(ev);
+        wake?.();
+      });
+      if (!unsubscribe) {
+        await stream.writeSSE({ event: 'error', data: 'too many subscribers' });
+        return;
+      }
+      let closed = false;
+      stream.onAbort(() => {
+        closed = true;
+        unsubscribe();
+        wake?.();
+      });
+      await stream.writeSSE({
+        event: 'ready',
+        data: JSON.stringify({ subscribers: bus.subscribers }),
+      });
+      while (!closed) {
+        while (queue.length)
+          await stream.writeSSE({
+            event: 'alert',
+            data: JSON.stringify(queue.shift()),
+            id: String(Date.now()),
+          });
+        await Promise.race([new Promise<void>((r) => (wake = r)), stream.sleep(15_000)]);
+        wake = null;
+        if (!closed && queue.length === 0) await stream.write(': keepalive\n\n');
+      }
+    }),
+  );
 
   app.openapi(
     createRoute({
@@ -262,6 +301,13 @@ export function alertRoutes(deps: Deps) {
         );
         return updated!;
       });
+      bus.publish({
+        kind: 'triaged',
+        alertId: row.id,
+        severity: row.severity,
+        title: row.title,
+        at: new Date().toISOString(),
+      });
       return c.json(toAlert(row), 200);
     },
   );
@@ -333,6 +379,42 @@ export function eventRoutes(deps: Deps) {
         }),
         200,
       );
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: 'get',
+      path: '/correlated',
+      tags: ['events'],
+      middleware: [requirePermission('events.read')] as const,
+      security: [{ bearerAuth: [] }],
+      request: {
+        query: z.object({
+          correlationId: z.string().min(3).max(256),
+          limit: z.coerce.number().int().min(1).max(200).default(50),
+        }),
+      },
+      responses: {
+        200: {
+          description:
+            'Events sharing a correlation id (flow, community id, Zeek uid) across engines',
+          content: {
+            'application/json': { schema: z.object({ items: z.array(NormalizedEvent) }) },
+          },
+        },
+        ...common,
+      },
+    }),
+    async (c) => {
+      const { correlationId, limit } = c.req.valid('query');
+      const rows = await db
+        .select()
+        .from(securityEvents)
+        .where(sql`${securityEvents.correlationIds} @> ARRAY[${correlationId}]::text[]`)
+        .orderBy(desc(securityEvents.eventTime))
+        .limit(limit);
+      return c.json({ items: rows.map(toEvent) }, 200);
     },
   );
 

@@ -4,6 +4,7 @@ import { getI18n } from '@/i18n/server';
 import type { MessageKey } from '@/i18n/messages';
 import { apiFetch } from '@/lib/api';
 import { getSessionUser } from '@/lib/session';
+import { LiveRefresh } from '@/components/live-refresh';
 import { TriageButtons } from './triage-buttons';
 
 export const dynamic = 'force-dynamic';
@@ -53,6 +54,9 @@ export default async function SocAlertsPage({
         <div>
           <h1 className="text-2xl font-semibold">{t('alerts.title')}</h1>
           <p className="mt-1 text-sm text-muted">{t('alerts.subtitle')}</p>
+          <div className="mt-2">
+            <LiveRefresh labels={{ live: t('alerts.live'), offline: t('alerts.offline') }} />
+          </div>
         </div>
         <a
           href={all ? '/soc-alerts' : '/soc-alerts?all=1'}

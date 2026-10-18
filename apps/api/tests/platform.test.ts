@@ -51,6 +51,7 @@ describe('platform endpoints', () => {
       'network.topology',
       'events.pipeline',
       'soc.alerts',
+      'detection.rule_registry',
     ]);
     expect(body.capabilities.find((c) => c.id === 'nips.inline_prevention')?.state).toBe(
       'disabled',

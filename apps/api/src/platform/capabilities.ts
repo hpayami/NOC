@@ -58,7 +58,12 @@ export const CAPABILITIES: CapabilityStatus[] = [
     phase: 2,
     reason: 'EVE JSON ingestion ready; no Suricata sensor registered',
   },
-  { id: 'nsm.zeek', state: 'not_configured', phase: 2, reason: 'No Zeek sensor registered' },
+  {
+    id: 'nsm.zeek',
+    state: 'not_configured',
+    phase: 2,
+    reason: 'Zeek JSON log ingestion ready; no Zeek sensor registered',
+  },
   {
     id: 'events.pipeline',
     state: 'available',
@@ -97,6 +102,13 @@ export const CAPABILITIES: CapabilityStatus[] = [
     reason: 'Scope enforcement implemented and tested; workers absent',
   },
   {
+    id: 'detection.rule_registry',
+    state: 'available',
+    phase: 2,
+    reason:
+      'Suricata rule import with licence, parsing, severity/ATT&CK extraction, validation lifecycle, alert linkage',
+  },
+  {
     id: 'ml.analytics',
     state: 'not_implemented',
     phase: 6,
@@ -105,13 +117,21 @@ export const CAPABILITIES: CapabilityStatus[] = [
 ];
 
 /** Capabilities whose state depends on what is registered and reporting right now. */
+type SensorState = Array<{ enabled: boolean; lastEventAt: Date | null }>;
+
 export function resolveCapabilities(input: {
-  suricataSensors: Array<{ enabled: boolean; lastEventAt: Date | null }>;
+  suricataSensors: SensorState;
+  zeekSensors?: SensorState;
   now: Date;
 }): CapabilityStatus[] {
+  const engines: Record<string, { sensors: SensorState; label: string }> = {
+    'nids.suricata': { sensors: input.suricataSensors, label: 'Suricata' },
+    'nsm.zeek': { sensors: input.zeekSensors ?? [], label: 'Zeek' },
+  };
   return CAPABILITIES.map((cap) => {
-    if (cap.id !== 'nids.suricata') return cap;
-    const enabled = input.suricataSensors.filter((s) => s.enabled);
+    const engine = engines[cap.id];
+    if (!engine) return cap;
+    const enabled = engine.sensors.filter((s) => s.enabled);
     if (enabled.length === 0) return cap;
     const fresh = enabled.filter(
       (s) => s.lastEventAt && input.now.getTime() - s.lastEventAt.getTime() < 10 * 60_000,
@@ -120,12 +140,12 @@ export function resolveCapabilities(input: {
       return {
         ...cap,
         state: 'available',
-        reason: `${fresh.length} Suricata sensor(s) delivering events`,
+        reason: `${fresh.length} ${engine.label} sensor(s) delivering events`,
       };
     return {
       ...cap,
       state: 'degraded',
-      reason: `${fresh.length}/${enabled.length} Suricata sensor(s) delivered events in the last 10 minutes`,
+      reason: `${fresh.length}/${enabled.length} ${engine.label} sensor(s) delivered events in the last 10 minutes`,
     };
   });
 }
