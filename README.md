@@ -109,6 +109,18 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
 - `GET /api/v1/alerts/stream`: SSE push of alert create/update/triage; the web shell proxies it
   so the SOC queue refreshes live. Web **Detection Engineering** page.
 
+## Phase 3 progress (SOC incident response)
+
+- `/api/v1/incidents`: lifecycle new → triage → investigation → containment → eradication →
+  recovery → closed with controlled deviations (reason required), closing gated by
+  `incidents.close`, append-only timeline, alert attachment (open alerts are escalated), stats.
+  Every change is audited; a denied closure is audited too.
+- `/api/v1/retention`: per-class retention policies with legal hold and a 365-day audit floor;
+  bounded scheduled purge of events, metrics and observations. The audit trail is never purged;
+  classes without a store report `dataset_absent` rather than a fake success.
+- Web **Incident Response** workspace (list, create, detail with timeline/notes/transitions) and
+  one-click incident creation from the SOC alert queue. See `docs/phase3-progress.md`.
+
 ## What Phase 0 provides
 
 - **Shared contracts** for every domain entity (users, assets, observations, segments, topology,
@@ -146,7 +158,7 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
 
 ## Roadmap
 
-Phase 1 asset inventory & NOC → Phase 2 NIDS & event pipeline → Phase 3 SOC & IR → Phase 4 NIPS &
+Phase 1 asset inventory & NOC → Phase 2 NIDS & event pipeline → Phase 3 SOC & IR (in progress) → Phase 4 NIPS &
 controlled response → Phase 5 authorized assessment → Phase 6 analytics → Phase 7 enterprise
 readiness. Details: `docs/phase-1-plan.md`, `docs/architecture.md`.
 

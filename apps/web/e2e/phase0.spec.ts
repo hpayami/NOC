@@ -118,6 +118,23 @@ test.describe('Phase 0 shell', () => {
     await page.goto('/detection-engineering');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('مهندسی تشخیص');
     await expect(page.getByText('هنوز قاعده‌ای وارد نشده است.')).toBeVisible();
+    // Incident response: empty until an analyst opens one; the whole lifecycle is real.
+    await page.goto('/incidents');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('پاسخ به حادثه');
+    await expect(page.getByText('هیچ حادثه‌ای ثبت نشده است.')).toBeVisible();
+    await page.getByLabel('عنوان').fill('E2E: suspicious SMB fan-out');
+    await page.getByLabel('شدت').selectOption('high');
+    await page.getByRole('button', { name: 'ایجاد حادثه' }).click();
+    await expect(page).toHaveURL(/\/incidents\/[0-9a-f-]{36}$/);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('E2E: suspicious SMB fan-out');
+    await expect(page.getByTestId('incident-status')).toHaveText('جدید');
+    await page.getByPlaceholder('یادداشت').fill('Host owner contacted; awaiting confirmation');
+    await page.getByRole('button', { name: 'افزودن یادداشت' }).click();
+    await expect(page.getByText('Host owner contacted; awaiting confirmation')).toBeVisible();
+    await page.getByRole('button', { name: '→ دسته‌بندی' }).click();
+    await expect(page.getByTestId('incident-status')).toHaveText('دسته‌بندی');
+    // An analyst holds incidents.manage but not incidents.close: no close button is offered.
+    await expect(page.getByRole('button', { name: '→ بسته' })).toHaveCount(0);
     // Analysts cannot administer users: forbidden page, not a crash.
     await page.goto('/administration');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('دسترسی مجاز نیست');

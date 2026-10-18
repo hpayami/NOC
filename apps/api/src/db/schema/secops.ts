@@ -116,6 +116,7 @@ export const incidents = pgTable(
     severity: severityEnum('severity').notNull(),
     assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
     commanderId: uuid('commander_id').references(() => users.id, { onDelete: 'set null' }),
+    openedBy: uuid('opened_by').references(() => users.id, { onDelete: 'set null' }),
     summary: text('summary').notNull().default(''),
     openedAt: ts('opened_at').notNull().defaultNow(),
     closedAt: ts('closed_at'),

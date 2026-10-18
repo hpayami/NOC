@@ -67,17 +67,22 @@ export const MonitoringPolicy = z.strictObject({
 });
 export type MonitoringPolicy = z.infer<typeof MonitoringPolicy>;
 
+export const RetentionDataClassValues = [
+  'security_events',
+  'raw_events',
+  'flows',
+  'audit',
+  'evidence',
+  'metrics',
+  'observations',
+  'pcap',
+] as const;
+export const RetentionDataClass = z.enum(RetentionDataClassValues);
+export type RetentionDataClass = z.infer<typeof RetentionDataClass>;
+
 export const RetentionPolicy = z.strictObject({
   id: Id,
-  dataClass: z.enum([
-    'security_events',
-    'raw_events',
-    'flows',
-    'audit',
-    'evidence',
-    'metrics',
-    'pcap',
-  ]),
+  dataClass: RetentionDataClass,
   retentionDays: z.number().int().min(1).max(3650),
   /** Audit retention may never be shorter than the platform floor (enforced in the API). */
   legalHold: z.boolean(),

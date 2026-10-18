@@ -5,6 +5,7 @@ import type { MessageKey } from '@/i18n/messages';
 import { apiFetch } from '@/lib/api';
 import { getSessionUser } from '@/lib/session';
 import { LiveRefresh } from '@/components/live-refresh';
+import { openIncidentFromAlert } from '../incidents/actions';
 import { TriageButtons } from './triage-buttons';
 
 export const dynamic = 'force-dynamic';
@@ -36,6 +37,7 @@ export default async function SocAlertsPage({
   const { all, cursor } = await searchParams;
   const me = await getSessionUser();
   const canTriage = me?.permissions.includes('alerts.triage') ?? false;
+  const canOpenIncident = me?.permissions.includes('incidents.manage') ?? false;
   const qs = new URLSearchParams({
     limit: '50',
     ...(all ? {} : { open: 'true' }),
@@ -106,9 +108,36 @@ export default async function SocAlertsPage({
                   <td className="px-3 py-2 text-xs text-muted">
                     {when.format(new Date(a.lastSeenAt))}
                   </td>
-                  <td className="px-3 py-2 text-xs">{t(STATUS_LABEL[a.status])}</td>
+                  <td className="px-3 py-2 text-xs">
+                    {t(STATUS_LABEL[a.status])}
+                    {a.incidentId ? (
+                      <a
+                        href={`/incidents/${a.incidentId}`}
+                        className="ltr mt-1 block text-[10px] text-muted hover:text-fg"
+                      >
+                        incident {a.incidentId.slice(0, 8)}
+                      </a>
+                    ) : null}
+                  </td>
                   {canTriage ? (
                     <td className="px-3 py-2">
+                      {canOpenIncident && !a.incidentId ? (
+                        <form
+                          action={openIncidentFromAlert.bind(null, {
+                            id: a.id,
+                            title: a.title,
+                            severity: a.severity,
+                          })}
+                          className="mb-1"
+                        >
+                          <button
+                            type="submit"
+                            className="rounded border border-border bg-surface px-2 py-1 text-xs hover:bg-surface-2"
+                          >
+                            {t('inc.open_from_alert')}
+                          </button>
+                        </form>
+                      ) : null}
                       <TriageButtons
                         alertId={a.id}
                         status={a.status}

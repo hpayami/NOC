@@ -45,6 +45,8 @@ const EnvSchema = z
     MONITORING_SCHEDULER_ENABLED: bool.default(true),
     MONITORING_TICK_SECONDS: z.coerce.number().int().min(5).max(300).default(15),
     MONITORING_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(8),
+    RETENTION_ENABLED: bool.default(true),
+    RETENTION_INTERVAL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
     APP_VERSION: z.string().default('0.1.0-phase1'),
   })
   .transform((e) => ({ ...e, COOKIE_SECURE: e.COOKIE_SECURE ?? e.NODE_ENV === 'production' }));

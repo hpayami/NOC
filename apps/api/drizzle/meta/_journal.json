@@ -43,6 +43,13 @@
       "when": 1792315576706,
       "tag": "0005_phase2_zeek_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792316952393,
+      "tag": "0006_phase3_incidents_retention",
+      "breakpoints": true
     }
   ]
 }

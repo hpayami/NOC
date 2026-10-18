@@ -7,6 +7,7 @@ import { loadEnv, type Env } from '../src/config/env';
 import { createDb, type DbHandle } from '../src/db/client';
 import { RateLimiter } from '../src/middleware/rate-limit';
 import { createMetrics } from '../src/platform/metrics';
+import { RetentionService } from '../src/retention/service';
 import { syncRbacCatalog } from '../src/platform/seed';
 import { TokenService } from '../src/security/tokens';
 import { bootstrapAdmin } from '../scripts/bootstrap-admin';
@@ -48,22 +49,24 @@ export async function createHarness(
   await resetDatabase(handle);
   await syncRbacCatalog(handle.db);
   const limiter = new RateLimiter();
+  const audit = new AuditService(handle.db);
   const app = createApp({
     env,
     db: handle.db,
     logger: pino({ level: 'silent' }),
     tokens: new TokenService(env.AUTH_JWT_SECRET, env.AUTH_ACCESS_TTL_SECONDS),
-    audit: new AuditService(handle.db),
+    audit,
     limiter,
     metrics: createMetrics(),
     bus: new AlertBus(),
+    retention: new RetentionService(handle.db, audit, { batchSize: 2, maxBatchesPerDataset: 3 }),
   });
   return { app, handle, env, limiter, close: () => handle.close() };
 }
 
 export async function resetDatabase(handle: DbHandle): Promise<void> {
   await handle.db.execute(
-    sql`truncate table users, refresh_tokens, audit_events, assets, sensors, alerts, incidents restart identity cascade`,
+    sql`truncate table users, refresh_tokens, audit_events, assets, sensors, alerts, incidents, retention_policies restart identity cascade`,
   );
 }
 

@@ -76,7 +76,7 @@ export const NAV: NavItem[] = [
     capabilities: ['soc.incidents', 'response.actions'],
     permission: 'incidents.read',
     phase: 3,
-    implemented: false,
+    implemented: true,
   },
   {
     slug: 'blue-team',

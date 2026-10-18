@@ -9,6 +9,7 @@ import { AlertBus } from './events/bus';
 import { AvailabilityService, MonitoringScheduler } from './monitoring/service';
 import { createMetrics } from './platform/metrics';
 import { syncRbacCatalog } from './platform/seed';
+import { RetentionScheduler, RetentionService } from './retention/service';
 import { TokenService } from './security/tokens';
 
 async function main() {
@@ -31,15 +32,19 @@ async function main() {
   const handle = createDb(env.DATABASE_URL, { max: env.DATABASE_POOL_MAX });
   await syncRbacCatalog(handle.db);
 
+  const audit = new AuditService(handle.db);
+  const retention = new RetentionService(handle.db, audit);
+  await retention.ensureDefaults();
   const deps = {
     env,
     db: handle.db,
     logger,
     tokens: new TokenService(env.AUTH_JWT_SECRET, env.AUTH_ACCESS_TTL_SECONDS),
-    audit: new AuditService(handle.db),
+    audit,
     limiter: new RateLimiter(),
     metrics: createMetrics(),
     bus: new AlertBus(),
+    retention,
   };
   const app = createApp(deps);
 
@@ -49,6 +54,11 @@ async function main() {
     logger,
   });
   if (env.MONITORING_SCHEDULER_ENABLED) scheduler.start();
+  const retentionScheduler = new RetentionScheduler(retention, {
+    intervalMinutes: env.RETENTION_INTERVAL_MINUTES,
+    logger,
+  });
+  if (env.RETENTION_ENABLED) retentionScheduler.start();
 
   const server = serve({ fetch: app.fetch, hostname: env.API_HOST, port: env.API_PORT }, (info) => {
     logger.info({ host: info.address, port: info.port, env: env.NODE_ENV }, 'noc-api listening');
@@ -57,6 +67,7 @@ async function main() {
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'shutting down');
     scheduler.stop();
+    retentionScheduler.stop();
     server.close();
     await handle.close();
     process.exit(0);

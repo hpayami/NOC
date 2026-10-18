@@ -10,7 +10,9 @@ import { errorBody, notFound, onError } from './middleware/errors';
 import { rateLimit } from './middleware/rate-limit';
 import { agentRoutes } from './routes/agents';
 import { alertRoutes, eventRoutes } from './routes/alerts';
+import { incidentRoutes } from './routes/incidents';
 import { ingestRoutes } from './routes/ingest';
+import { retentionRoutes } from './routes/retention';
 import { ruleRoutes } from './routes/rules';
 import { assetRoutes } from './routes/assets';
 import { authRoutes } from './routes/auth';
@@ -110,6 +112,8 @@ export function createApp(deps: Deps) {
   app.route('/api/v1/alerts', alertRoutes(deps));
   app.route('/api/v1/events', eventRoutes(deps));
   app.route('/api/v1/detection-rules', ruleRoutes(deps));
+  app.route('/api/v1/incidents', incidentRoutes(deps));
+  app.route('/api/v1/retention', retentionRoutes(deps, deps.retention));
   app.route('/api/v1/platform', platformRoutes(deps));
   app.route('/api/v1/audit', auditRoutes(deps));
 

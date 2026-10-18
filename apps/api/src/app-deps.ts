@@ -5,6 +5,7 @@ import type { Env } from './config/env';
 import type { Db } from './db/client';
 import type { RateLimiter } from './middleware/rate-limit';
 import type { Metrics } from './platform/metrics';
+import type { RetentionService } from './retention/service';
 import type { TokenService } from './security/tokens';
 
 export interface Deps {
@@ -16,4 +17,5 @@ export interface Deps {
   limiter: RateLimiter;
   metrics: Metrics;
   bus: AlertBus;
+  retention: RetentionService;
 }

@@ -79,9 +79,17 @@ export const CAPABILITIES: CapabilityStatus[] = [
   },
   {
     id: 'soc.incidents',
-    state: 'not_implemented',
+    state: 'available',
     phase: 3,
-    reason: 'Lifecycle rules implemented and tested; API not yet exposed',
+    reason:
+      'Incident lifecycle with controlled deviations, append-only timeline, alert linkage, audited transitions; closing requires incidents.close',
+  },
+  {
+    id: 'data.retention',
+    state: 'available',
+    phase: 3,
+    reason:
+      'Per-class retention policies with legal hold; bounded scheduled purge of events, metrics and observations; audit trail never purged',
   },
   {
     id: 'response.actions',

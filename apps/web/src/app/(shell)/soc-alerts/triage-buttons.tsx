@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useRef } from 'react';
 import type { AlertStatus } from '@noc/shared';
 import { triageAlert, type TriageState } from './actions';
 
@@ -31,11 +31,13 @@ export function TriageButtons({
   >;
 }) {
   const [state, action, pending] = useActionState<TriageState, FormData>(triageAlert, null);
+  const actionRef = useRef<HTMLInputElement>(null);
   const actions = QUICK[status];
   const needsNote = actions.some((a) => NEEDS_NOTE.has(a));
   return (
     <form action={action} className="flex flex-wrap items-center gap-1">
       <input type="hidden" name="alertId" value={alertId} />
+      <input type="hidden" name="action" ref={actionRef} />
       {needsNote ? (
         <input
           name="note"
@@ -47,8 +49,9 @@ export function TriageButtons({
         <button
           key={a}
           type="submit"
-          name="action"
-          value={a}
+          onClick={() => {
+            if (actionRef.current) actionRef.current.value = a;
+          }}
           disabled={pending}
           className="rounded border border-border bg-surface px-2 py-1 text-xs hover:bg-surface-2 disabled:opacity-60"
         >

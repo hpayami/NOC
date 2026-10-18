@@ -26,3 +26,5 @@ export * from './engines/suricata-rules';
 export * from './entities/rules';
 export * from './rules/alert-state';
 export * from './entities/ingest';
+export * from './entities/incidents';
+export * from './entities/retention';

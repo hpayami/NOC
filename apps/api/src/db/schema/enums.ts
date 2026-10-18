@@ -80,5 +80,6 @@ export const retentionDataClassEnum = pgEnum('retention_data_class', [
   'audit',
   'evidence',
   'metrics',
+  'observations',
   'pcap',
 ]);
