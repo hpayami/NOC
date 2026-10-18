@@ -30,6 +30,17 @@ No third-party dependencies (standard library only).
 
 Run: `noc-sensor-agent` (loop) or `noc-sensor-agent --once` (one cycle, exit 1 if anything failed).
 
+## Detection validation (offline replay)
+
+Set `NOC_VALIDATION_SAMPLES_DIR` to a directory of curated sample captures. Every
+`NOC_VALIDATION_INTERVAL` seconds (default 30) the agent fetches queued validations; for each it
+runs `suricata -r <sample> -S <managed rules> -l <tmp> -k none --runmode single`, reads the
+signature ids that fired from the offline `eve.json` (or `fast.log`) and reports them with the
+engine version and the bundle digest it is running. A sample name must be a bare file name inside
+the directory; path components, hidden files and missing files are reported as unavailable. If the
+agent is not running the bundle the platform expected it says so instead of replaying. Nothing is
+sent on any interface and the sample never leaves the host.
+
 ## The IPS hook contract
 
 The agent does **not** change Suricata's capture mode itself. For inline prevention the operator

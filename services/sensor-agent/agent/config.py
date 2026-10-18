@@ -37,6 +37,8 @@ class Config:
     eve_batch_lines: int = 500
     eve_batch_bytes: int = 1_000_000
     ips_apply_hook: Path | None = None
+    validation_samples_dir: Path | None = None
+    validation_interval: int = 30
     inline_capable: bool = False
     hostname: str = field(default_factory=lambda: os.uname().nodename if hasattr(os, "uname") else "sensor")
     agent_version: str = "0.1.0"
@@ -63,6 +65,8 @@ class Config:
             eve_batch_lines=_int(g("NOC_EVE_BATCH_LINES"), 500, 1, 5000),
             eve_batch_bytes=_int(g("NOC_EVE_BATCH_BYTES"), 1_000_000, 10_000, 4_000_000),
             ips_apply_hook=Path(hook) if hook else None,
+            validation_samples_dir=Path(g("NOC_VALIDATION_SAMPLES_DIR")) if g("NOC_VALIDATION_SAMPLES_DIR") else None,
+            validation_interval=_int(g("NOC_VALIDATION_INTERVAL"), 30, 10, 600),
             inline_capable=_bool(g("SENSOR_INLINE_CAPABLE"), False),
             hostname=g("NOC_SENSOR_HOSTNAME") or (os.uname().nodename if hasattr(os, "uname") else "sensor"),
             agent_version=g("NOC_AGENT_VERSION", "0.1.0"),

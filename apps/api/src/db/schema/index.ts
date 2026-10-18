@@ -6,6 +6,7 @@ export * from './vulnerabilities';
 export * from './operations';
 export * from './threat-intel';
 export * from './pentest';
+export * from './validation';
 export * from './secops';
 export * from './governance';
 export * from './audit';

@@ -107,6 +107,13 @@ class ApiClient:
             {"policyId": policy_id, "version": version, "applied": applied, "detail": (detail or "")[:512] or None},
         )
 
+    def validations(self) -> list[dict[str, Any]]:
+        res = self._request("GET", "/api/v1/agents/validations")
+        return list((res.body or {}).get("items", []))
+
+    def validation_result(self, validation_id: str, payload: dict[str, Any]) -> None:
+        self._json("POST", f"/api/v1/agents/validations/{validation_id}/result", payload, ok=(204, 404, 409))
+
     def ingest_eve(self, ndjson: bytes) -> dict[str, Any]:
         return self._request(
             "POST",

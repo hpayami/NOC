@@ -2,7 +2,12 @@ import type { CoverageStatus, DetectionCoverage, TechniqueCoverageRow } from '..
 import { ATTACK_TECHNIQUES, TECHNIQUE_ID, techniqueInfo } from './attack';
 
 export interface CoverageInput {
-  rules: ReadonlyArray<{ lifecycle: string; techniques: readonly string[]; engine: string }>;
+  rules: ReadonlyArray<{
+    lifecycle: string;
+    techniques: readonly string[];
+    engine: string;
+    validated?: boolean;
+  }>;
   sensors: ReadonlyArray<{ engine: string | null; enabled: boolean; inSync: boolean }>;
   /** Technique → events in the period that carried it. */
   observed: Readonly<Record<string, number>>;
@@ -40,15 +45,17 @@ export function computeCoverage(input: CoverageInput, now: Date): DetectionCover
 
   const rows: TechniqueCoverageRow[] = [];
   for (const technique of [...ids].sort()) {
-    const rules = { total: 0, deployed: 0, validated: 0, draft: 0, disabled: 0 };
+    const rules = { total: 0, deployed: 0, validatedLifecycle: 0, draft: 0, disabled: 0 };
+    let proven = 0;
     const deployedEngines = new Set<string>();
     for (const r of input.rules) {
       if (r.lifecycle === 'retired' || !r.techniques.includes(technique)) continue;
       rules.total++;
       if (r.lifecycle === 'deployed') {
         rules.deployed++;
+        if (r.validated) proven++;
         deployedEngines.add(r.engine);
-      } else if (r.lifecycle === 'validated') rules.validated++;
+      } else if (r.lifecycle === 'validated') rules.validatedLifecycle++;
       else if (r.lifecycle === 'draft') rules.draft++;
       else if (r.lifecycle === 'disabled') rules.disabled++;
     }
@@ -68,7 +75,14 @@ export function computeCoverage(input: CoverageInput, now: Date): DetectionCover
       name: info.name,
       tactic: info.tactic,
       status,
-      rules,
+      rules: {
+        total: rules.total,
+        deployed: rules.deployed,
+        validated: rules.validatedLifecycle,
+        draft: rules.draft,
+        disabled: rules.disabled,
+        proven,
+      },
       sensorsInSync,
       observedInPeriod: input.observed[technique] ?? 0,
       openAlerts: input.openAlerts[technique] ?? 0,
@@ -92,6 +106,7 @@ export function computeCoverage(input: CoverageInput, now: Date): DetectionCover
     summary: {
       techniques: rows.length,
       covered: count('covered'),
+      validated: rows.filter((r) => r.status === 'covered' && r.rules.proven > 0).length,
       deployedUnacknowledged: count('deployed_unacknowledged'),
       ruleNotDeployed: count('rule_not_deployed'),
       uncovered: count('uncovered'),

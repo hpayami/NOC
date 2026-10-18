@@ -13,12 +13,15 @@ import {
   NeighborBatchResult,
   SensorHeartbeatRequest,
   RuleBundle,
+  SensorValidationDirective,
+  ValidationResultRequest,
 } from '@noc/shared';
 import { AgentService } from '../agents/service';
 import type { Deps } from '../app-deps';
 import { AssetService } from '../assets/service';
 import { assetMetrics, assets, sensors } from '../db/schema';
 import { RuleService } from '../rules/service';
+import { ValidationService } from '../rules/validation';
 import { requireSensor } from '../middleware/auth';
 import type { AppEnv } from '../middleware/context';
 import { rateLimit } from '../middleware/rate-limit';
@@ -335,6 +338,75 @@ export function agentRoutes(deps: Deps) {
     }),
     async (c) => {
       await deps.ips.ack(c.get('sensor')!.sensorId, c.req.valid('json'));
+      return c.body(null, 204);
+    },
+  );
+
+  const validations = new ValidationService(db, deps.audit);
+  app.openapi(
+    createRoute({
+      method: 'get',
+      path: '/validations',
+      tags: ['agents'],
+      middleware: [
+        requireSensor(),
+        rateLimit(limiter, {
+          name: 'agent-val',
+          capacity: 60,
+          refillPerSecond: 1,
+          keyBy: 'sensor',
+        }),
+      ] as const,
+      security: sensorAuth,
+      responses: {
+        200: {
+          description:
+            'Queued detection validations for this sensor (marked dispatched on fetch): replay each sample offline against the running bundle and report',
+          content: {
+            'application/json': { schema: z.object({ items: z.array(SensorValidationDirective) }) },
+          },
+        },
+        401: err('Unauthenticated'),
+      },
+    }),
+    async (c) => c.json({ items: await validations.pendingFor(c.get('sensor')!.sensorId) }, 200),
+  );
+
+  app.openapi(
+    createRoute({
+      method: 'post',
+      path: '/validations/{id}/result',
+      tags: ['agents'],
+      middleware: [
+        requireSensor(),
+        rateLimit(limiter, {
+          name: 'agent-val',
+          capacity: 60,
+          refillPerSecond: 1,
+          keyBy: 'sensor',
+        }),
+      ] as const,
+      security: sensorAuth,
+      request: {
+        params: z.object({ id: z.uuid() }),
+        body: {
+          content: { 'application/json': { schema: ValidationResultRequest } },
+          required: true,
+        },
+      },
+      responses: {
+        204: { description: 'Recorded; the verdict is derived by the platform' },
+        401: err('Unauthenticated'),
+        404: err('Not found'),
+        409: err('Already reported'),
+      },
+    }),
+    async (c) => {
+      await validations.report(
+        c.get('sensor')!.sensorId,
+        c.req.valid('param').id,
+        c.req.valid('json'),
+      );
       return c.body(null, 204);
     },
   );

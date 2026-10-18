@@ -4,6 +4,9 @@ import { and, count, desc, eq, ilike, sql, type SQL } from 'drizzle-orm';
 import {
   ApiError,
   CoverageQuery,
+  CreateDetectionValidationRequest,
+  DetectionValidation,
+  ValidationListQuery,
   DetectionCoverage,
   DetectionRuleDetail,
   ImportRulesRequest,
@@ -19,10 +22,11 @@ import {
 import type { Deps } from '../app-deps';
 import { detectionRules } from '../db/schema';
 import { requirePermission } from '../middleware/auth';
-import { siteScope } from '../middleware/scope';
+import { sensorSiteCondition, siteScope } from '../middleware/scope';
 import type { AppEnv } from '../middleware/context';
 import { RuleService, type RuleActor } from '../rules/service';
 import { DetectionCoverageService } from '../rules/coverage';
+import { ValidationService } from '../rules/validation';
 
 const err = (d: string) => ({
   description: d,
@@ -217,6 +221,100 @@ export function ruleRoutes(deps: Deps) {
             siteScope(c.get('principal')),
             c.req.valid('query').days,
           ),
+        ),
+        200,
+      ),
+  );
+
+  const validations = new ValidationService(db, deps.audit);
+  app.openapi(
+    createRoute({
+      method: 'get',
+      path: '/validations',
+      tags: ['detection-rules'],
+      middleware: [requirePermission('detection_rules.read')] as const,
+      security: [{ bearerAuth: [] }],
+      request: { query: ValidationListQuery },
+      responses: {
+        200: {
+          description:
+            'Detection validations (offline sample replays), newest first, inside the caller site scope',
+          content: {
+            'application/json': { schema: z.object({ items: z.array(DetectionValidation) }) },
+          },
+        },
+        ...common,
+      },
+    }),
+    async (c) =>
+      c.json(
+        {
+          items: await validations.list({
+            ...c.req.valid('query'),
+            sensorScope: sensorSiteCondition(siteScope(c.get('principal'))),
+          }),
+        },
+        200,
+      ),
+  );
+
+  app.openapi(
+    createRoute({
+      method: 'post',
+      path: '/validations',
+      tags: ['detection-rules'],
+      middleware: [requirePermission('detection_rules.change')] as const,
+      security: [{ bearerAuth: [] }],
+      request: {
+        body: {
+          content: { 'application/json': { schema: CreateDetectionValidationRequest } },
+          required: true,
+        },
+      },
+      responses: {
+        201: {
+          description: 'Queued for the sensor',
+          content: { 'application/json': { schema: DetectionValidation } },
+        },
+        404: err('Rule or sensor not found'),
+        409: err('Rule not deployed to that sensor, sensor not Suricata or disabled'),
+        ...common,
+      },
+    }),
+    async (c) => {
+      const p = c.get('principal')!;
+      const actor = {
+        userId: p.userId,
+        label: p.email,
+        requestId: c.get('requestId'),
+        ip: c.get('clientIp'),
+      };
+      return c.json(await validations.create(c.req.valid('json'), actor), 201);
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: 'get',
+      path: '/validations/{id}',
+      tags: ['detection-rules'],
+      middleware: [requirePermission('detection_rules.read')] as const,
+      security: [{ bearerAuth: [] }],
+      request: { params: z.object({ id: z.uuid() }) },
+      responses: {
+        200: {
+          description: 'Validation',
+          content: { 'application/json': { schema: DetectionValidation } },
+        },
+        404: err('Not found'),
+        ...common,
+      },
+    }),
+    async (c) =>
+      c.json(
+        await validations.get(
+          c.req.valid('param').id,
+          sensorSiteCondition(siteScope(c.get('principal'))),
         ),
         200,
       ),

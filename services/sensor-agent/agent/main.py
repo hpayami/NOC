@@ -20,6 +20,7 @@ from .config import Config
 from .eve import EveShipper
 from .ips import IpsApplier
 from .suricata import SuricataAdapter
+from .validation import ValidationRunner
 
 log = logging.getLogger("noc-agent")
 
@@ -33,6 +34,7 @@ class AgentState:
     last_heartbeat: float = 0.0
     last_bundle: float = 0.0
     last_directive: float = 0.0
+    last_validation: float = 0.0
     errors: list[str] = field(default_factory=list)
 
     def error(self, msg: str) -> None:
@@ -49,6 +51,7 @@ class Agent:
         suricata: SuricataAdapter | None = None,
         ips: IpsApplier | None = None,
         eve: EveShipper | None = None,
+        validator: ValidationRunner | None = None,
         clock: Any = time.monotonic,
     ):
         self.cfg = cfg
@@ -60,6 +63,7 @@ class Agent:
             if cfg.eve_log
             else None
         )
+        self.validator = validator or ValidationRunner(cfg.validation_samples_dir, cfg.rules_file)
         self.clock = clock
         self.state = AgentState()
         self._load_state()
@@ -173,6 +177,29 @@ class Agent:
         self._save_state()
         (log.info if applied else log.warning)("directive %s v%s: applied=%s %s", d.get("mode"), key[1], applied, detail)
 
+    def run_validations(self) -> None:
+        """Replay each queued sample offline and report; a result always goes back, even an error."""
+        for v in self.client.validations():
+            vid = str(v.get("id", ""))
+            if not vid:
+                continue
+            expected = v.get("expectedBundleSha256")
+            if expected and expected != self.state.running_bundle_sha:
+                # Running a different bundle proves nothing: say so instead of replaying.
+                result = {
+                    "firedSids": [],
+                    "rulesBundleSha256": self.state.running_bundle_sha,
+                    "engineVersion": None,
+                    "error": f"sensor runs bundle {(self.state.running_bundle_sha or 'none')[:12]}, not the expected {expected[:12]}",
+                    "durationMs": 0,
+                }
+            else:
+                result = self.validator.run(str(v.get("sampleRef", ""))).payload(self.state.running_bundle_sha)
+            self.client.validation_result(vid, result)
+            (log.info if not result["error"] else log.warning)(
+                "validation %s: fired=%s error=%s", vid[:8], result["firedSids"], result["error"]
+            )
+
     def ship_eve(self) -> None:
         if not self.eve:
             return
@@ -189,6 +216,7 @@ class Agent:
             ("heartbeat", self.cfg.heartbeat_interval, self.heartbeat, "last_heartbeat"),
             ("rules", self.cfg.bundle_interval, self.sync_rules, "last_bundle"),
             ("directive", self.cfg.directive_interval, self.sync_directive, "last_directive"),
+            ("validation", self.cfg.validation_interval, self.run_validations, "last_validation"),
         ):
             if now - getattr(self.state, stamp) < interval and getattr(self.state, stamp) != 0.0:
                 continue

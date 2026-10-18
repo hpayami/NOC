@@ -29,6 +29,8 @@ export const TechniqueCoverageRow = z.strictObject({
     validated: z.number().int().nonnegative(),
     draft: z.number().int().nonnegative(),
     disabled: z.number().int().nonnegative(),
+    /** Deployed rules with a fresh passed validation on a sensor running the bundle. */
+    proven: z.number().int().nonnegative(),
   }),
   /** Enabled sensors of the rules' engine(s) that acknowledged the current bundle. */
   sensorsInSync: z.number().int().nonnegative(),
@@ -47,6 +49,8 @@ export const DetectionCoverage = z.strictObject({
   summary: z.strictObject({
     techniques: z.number().int().nonnegative(),
     covered: z.number().int().nonnegative(),
+    /** Covered techniques with at least one validated rule — proven, not just deployed. */
+    validated: z.number().int().nonnegative(),
     deployedUnacknowledged: z.number().int().nonnegative(),
     ruleNotDeployed: z.number().int().nonnegative(),
     uncovered: z.number().int().nonnegative(),

@@ -17,6 +17,7 @@ from agent.eve import EveShipper
 from agent.ips import IpsApplier
 from agent.main import Agent
 from agent.suricata import SuricataAdapter
+from agent.validation import ValidationRunner
 
 CRED = "c" * 64
 BUNDLE = {
@@ -59,6 +60,7 @@ class MockApi:
         self.bundle = BUNDLE
         self.directive = IDS
         self.eve_fail = False
+        self.validations: list[dict] = []
         self.server = HTTPServer(("127.0.0.1", 0), self._handler())
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -110,6 +112,8 @@ class MockApi:
                     return self._send(204)
                 if self.path == "/api/v1/agents/ips-ack":
                     return self._send(204)
+                if self.path.startswith("/api/v1/agents/validations/") and self.path.endswith("/result"):
+                    return self._send(204)
                 if self.path == "/api/v1/ingest/suricata/eve":
                     if api.eve_fail:
                         return self._send(503, {"error": {"message": "down"}})
@@ -129,6 +133,9 @@ class MockApi:
                     return self._send(200, api.bundle, {"etag": etag})
                 if self.path == "/api/v1/agents/ips-directive":
                     return self._send(200, api.directive)
+                if self.path == "/api/v1/agents/validations":
+                    items, api.validations = api.validations, []
+                    return self._send(200, {"items": items})
                 return self._send(404, {"error": {"message": "nope"}})
 
         return H
@@ -165,7 +172,30 @@ def api():
     m.close()
 
 
+class FakeSuricataBin:
+    """Offline replay stand-in: `-V` answers a version; `-r` writes an eve.json with the sids in `fires`."""
+
+    def __init__(self, fires: list[int] | None = None, code: int = 0):
+        self.fires = fires if fires is not None else [9000001]
+        self.code = code
+        self.commands: list[list[str]] = []
+
+    def __call__(self, cmd: list[str]) -> tuple[int, str, str]:
+        self.commands.append(cmd)
+        if "-V" in cmd:
+            return 0, "This is Suricata version 7.0.6 RELEASE", ""
+        if self.code != 0:
+            return self.code, "", "engine error"
+        out = Path(cmd[cmd.index("-l") + 1])
+        with (out / "eve.json").open("w") as f:
+            for sid in self.fires:
+                f.write(json.dumps({"event_type": "alert", "alert": {"signature_id": sid}}) + "\n")
+            f.write(json.dumps({"event_type": "flow"}) + "\n")
+        return 0, "", ""
+
+
 def make_agent(api: MockApi, tmp: Path, **over) -> tuple[Agent, FakeSc]:
+    suricata_bin = over.pop("suricata_bin", None)
     kw = {"enrolment_token": "t" * 40, **over}
     cfg = Config(
         api_url=api.url,
@@ -187,6 +217,7 @@ def make_agent(api: MockApi, tmp: Path, **over) -> tuple[Agent, FakeSc]:
         suricata=SuricataAdapter(cfg.rules_file, cfg.suricata_socket, runner=sc),
         ips=IpsApplier(cfg.ips_apply_hook, cfg.inline_capable),
         eve=EveShipper(cfg.eve_log, cfg.state_dir / "eve.checkpoint", 2, 10_000),
+        validator=ValidationRunner(cfg.validation_samples_dir, cfg.rules_file, runner=suricata_bin or FakeSuricataBin()),
         clock=lambda: 1000.0,
     )
     return agent, sc
@@ -329,3 +360,77 @@ def test_bad_enrolment_token_is_an_error_not_a_crash(api, tmp_path):
     assert not (tmp_path / "cred").exists()
     with pytest.raises(ApiError):
         ApiClient(api.url).heartbeat({"state": "healthy"})
+
+
+VALIDATION = {
+    "id": "00000000-0000-4000-8000-00000000000a",
+    "sampleRef": "c2-beacon.pcap",
+    "expectedBundleSha256": BUNDLE["bundleSha256"],
+    "expectedSids": [9000001],
+    "expiresAt": "2026-10-18T11:00:00.000Z",
+}
+
+
+def test_validation_replays_the_sample_offline_against_the_running_bundle(api, tmp_path):
+    samples = tmp_path / "samples"
+    samples.mkdir()
+    (samples / "c2-beacon.pcap").write_bytes(b"\xd4\xc3\xb2\xa1")
+    engine = FakeSuricataBin(fires=[9000001, 2100498])
+    agent, _ = make_agent(api, tmp_path, validation_samples_dir=samples, suricata_bin=engine)
+    api.validations = [dict(VALIDATION)]
+    agent.run_once()
+    assert agent.state.errors == []
+    results = posts(api, f"/api/v1/agents/validations/{VALIDATION['id']}/result")
+    assert len(results) == 1
+    r = results[0]
+    assert r["firedSids"] == [2100498, 9000001]  # sorted
+    assert r["rulesBundleSha256"] == BUNDLE["bundleSha256"]
+    assert r["engineVersion"] == "7.0.6"
+    assert r["error"] is None and r["durationMs"] >= 0
+    # Offline replay: the sample is read with -r, the managed rules with -S, no interface, no checksum.
+    replay = next(c for c in engine.commands if "-r" in c)
+    assert replay[replay.index("-r") + 1] == str(samples / "c2-beacon.pcap")
+    assert replay[replay.index("-S") + 1] == str(tmp_path / "rules" / "noc.rules")
+    assert "-k" in replay and "none" in replay and "-i" not in replay
+    # Nothing queued on the next cycle → nothing posted.
+    agent.state.last_validation = 0.0
+    agent.run_once()
+    assert len(posts(api, f"/api/v1/agents/validations/{VALIDATION['id']}/result")) == 1
+
+
+def test_validation_refuses_wrong_bundle_missing_sample_and_path_tricks(api, tmp_path):
+    samples = tmp_path / "samples"
+    samples.mkdir()
+    (samples / "ok.pcap").write_bytes(b"x")
+    (tmp_path / "secret.pcap").write_bytes(b"x")
+    engine = FakeSuricataBin()
+    agent, _ = make_agent(api, tmp_path, validation_samples_dir=samples, suricata_bin=engine)
+    # Different expected bundle: reported without replaying anything.
+    api.validations = [dict(VALIDATION, expectedBundleSha256="f" * 64)]
+    agent.run_once()
+    r = posts(api, f"/api/v1/agents/validations/{VALIDATION['id']}/result")[0]
+    assert r["firedSids"] == [] and "not the expected" in r["error"]
+    assert not [c for c in engine.commands if "-r" in c]
+    # Missing sample and traversal attempts are reported as unavailable, never read.
+    runner = agent.validator
+    assert runner.sample_path("ok.pcap") == (samples / "ok.pcap").resolve()
+    assert runner.sample_path("missing.pcap") is None
+    assert runner.sample_path("../secret.pcap") is None
+    assert runner.sample_path("/etc/passwd") is None
+    assert runner.sample_path(".hidden") is None
+    res = runner.run("../secret.pcap")
+    assert res.fired_sids == [] and "not available" in res.error
+    # Engine failure is reported, not masked.
+    failing = ValidationRunner(samples, tmp_path / "rules" / "noc.rules", runner=FakeSuricataBin(code=1))
+    res = failing.run("ok.pcap")
+    assert res.error.startswith("suricata exited 1")
+    # Without a sample directory the sensor says so.
+    none = ValidationRunner(None, tmp_path / "rules" / "noc.rules", runner=engine)
+    assert "no sample directory" in none.run("ok.pcap").error
+
+
+def test_validation_runner_reads_fast_log_when_eve_is_absent(tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "fast.log").write_text("10/18/2026-10:00:00.000000  [**] [1:2001219:20] ET SCAN [**]\n10/18/2026-10:00:01.000000  [**] [1:9000001:1] C2 [**]\n")
+    assert ValidationRunner._collect(out) == {2001219, 9000001}

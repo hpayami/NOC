@@ -1,10 +1,41 @@
-import { DetectionCoverage, type CoverageStatus } from '@noc/shared';
+import { z } from 'zod';
+import {
+  DetectionCoverage,
+  DetectionRuleDetail,
+  DetectionValidation,
+  RuleDeploymentState,
+  type CoverageStatus,
+  type DetectionValidationStatus,
+  type ValidationVerdict,
+} from '@noc/shared';
 import { getI18n } from '@/i18n/server';
 import { apiFetch } from '@/lib/api';
+import { getSessionUser } from '@/lib/session';
 import type { MessageKey } from '@/i18n/messages';
+import { ValidateForm } from './validate-form';
 
 export const dynamic = 'force-dynamic';
 const PERIODS = [7, 30, 90] as const;
+const Validations = z.object({ items: z.array(DetectionValidation) });
+const Rules = z.object({ items: z.array(DetectionRuleDetail), nextCursor: z.string().nullable() });
+const Deployment = z.object({ items: z.array(RuleDeploymentState) });
+const VERDICT_LABEL: Record<ValidationVerdict, MessageKey> = {
+  passed: 'bt.verdict.passed',
+  failed: 'bt.verdict.failed',
+  inconclusive: 'bt.verdict.inconclusive',
+};
+const VERDICT_TONE: Record<ValidationVerdict, string> = {
+  passed: 'text-ok',
+  failed: 'text-sev-high',
+  inconclusive: 'text-sev-medium',
+};
+const VSTATUS_LABEL: Record<DetectionValidationStatus, MessageKey> = {
+  queued: 'bt.vstatus.queued',
+  dispatched: 'bt.vstatus.dispatched',
+  completed: 'bt.vstatus.completed',
+  failed: 'bt.vstatus.failed',
+  expired: 'bt.vstatus.expired',
+};
 const STATUS_LABEL: Record<CoverageStatus, MessageKey> = {
   covered: 'bt.covered',
   deployed_unacknowledged: 'bt.deployed_unacknowledged',
@@ -27,7 +58,22 @@ export default async function BlueTeamPage({
   const sp = await searchParams;
   const days = (PERIODS as readonly number[]).includes(Number(sp.days)) ? Number(sp.days) : 30;
   const gapsOnly = sp.view === 'gaps';
-  const c = await apiFetch(`/api/v1/detection-rules/coverage?days=${days}`, DetectionCoverage);
+  const me = await getSessionUser();
+  const canChange = me?.permissions.includes('detection_rules.change') ?? false;
+  const [c, validations, deployedRules, deployment] = await Promise.all([
+    apiFetch(`/api/v1/detection-rules/coverage?days=${days}`, DetectionCoverage),
+    apiFetch('/api/v1/detection-rules/validations?limit=50', Validations),
+    canChange
+      ? apiFetch('/api/v1/detection-rules?lifecycle=deployed&limit=200', Rules)
+      : Promise.resolve({ items: [] as z.infer<typeof DetectionRuleDetail>[], nextCursor: null }),
+    canChange
+      ? apiFetch('/api/v1/detection-rules/deployment', Deployment)
+      : Promise.resolve({ items: [] as z.infer<typeof RuleDeploymentState>[] }),
+  ]);
+  const when = new Intl.DateTimeFormat(locale === 'fa' ? 'fa-IR' : 'en-GB', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  });
   const fmt = new Intl.NumberFormat(locale === 'fa' ? 'fa-IR' : 'en-US');
   const s = c.summary;
   const isGap = (r: DetectionCoverage['rows'][number]) =>
@@ -86,6 +132,7 @@ export default async function BlueTeamPage({
                 s.observedUncovered,
                 s.observedUncovered ? 'text-sev-high' : 'text-fg',
               ],
+              ['bt.proven', s.validated, s.validated ? 'text-ok' : 'text-fg'],
             ] as Array<[MessageKey, number, string]>
           ).map(([k, v, tone]) => (
             <div key={k} className="flex justify-between gap-2">
@@ -176,6 +223,7 @@ export default async function BlueTeamPage({
                 <th className="px-3 py-2 text-start">{t('bt.tactic')}</th>
                 <th className="px-3 py-2 text-start">{t('bt.status')}</th>
                 <th className="px-3 py-2 text-start">{t('bt.rules')}</th>
+                <th className="px-3 py-2 text-start">{t('bt.rules_proven')}</th>
                 <th className="px-3 py-2 text-start">{t('bt.sensors_in_sync')}</th>
                 <th className="px-3 py-2 text-start">{t('bt.observed')}</th>
                 <th className="px-3 py-2 text-start">{t('bt.open_alerts')}</th>
@@ -196,6 +244,11 @@ export default async function BlueTeamPage({
                   <td className="ltr px-3 py-2 text-xs tabular-nums">
                     {r.rules.deployed} / {r.rules.total}
                   </td>
+                  <td
+                    className={`px-3 py-2 text-xs tabular-nums ${r.rules.proven ? 'text-ok' : ''}`}
+                  >
+                    {fmt.format(r.rules.proven)}
+                  </td>
                   <td className="px-3 py-2 text-xs tabular-nums">{fmt.format(r.sensorsInSync)}</td>
                   <td className="px-3 py-2 text-xs tabular-nums">
                     {fmt.format(r.observedInPeriod)}
@@ -211,6 +264,95 @@ export default async function BlueTeamPage({
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section aria-labelledby="validations" className="space-y-3">
+        <h2 id="validations" className="text-lg font-medium">
+          {t('bt.validations')}
+        </h2>
+        {validations.items.length === 0 ? (
+          <p
+            className="rounded-lg border border-border bg-surface p-4 text-sm text-muted"
+            data-testid="bt-no-validations"
+          >
+            {t('bt.no_validations')}
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-surface text-xs text-muted">
+                <tr>
+                  <th className="px-3 py-2 text-start">{t('bt.requested')}</th>
+                  <th className="px-3 py-2 text-start">{t('bt.rule')}</th>
+                  <th className="px-3 py-2 text-start">{t('bt.sensor')}</th>
+                  <th className="px-3 py-2 text-start">{t('bt.sample')}</th>
+                  <th className="px-3 py-2 text-start">{t('bt.status')}</th>
+                  <th className="px-3 py-2 text-start">{t('bt.verdict')}</th>
+                  <th className="px-3 py-2 text-start">{t('bt.fired')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {validations.items.map((v) => (
+                  <tr key={v.id} className="border-t border-border align-top">
+                    <td className="px-3 py-2 text-xs">{when.format(new Date(v.createdAt))}</td>
+                    <td className="ltr px-3 py-2 text-xs">
+                      {v.ruleName}
+                      <span className="block text-[10px] text-muted">{v.ruleExternalId}</span>
+                    </td>
+                    <td className="ltr px-3 py-2 text-xs">{v.sensorName}</td>
+                    <td className="ltr px-3 py-2 text-xs text-muted">{v.sampleRef}</td>
+                    <td className="px-3 py-2 text-xs">{t(VSTATUS_LABEL[v.status])}</td>
+                    <td
+                      className={`px-3 py-2 text-xs font-medium ${v.verdict ? VERDICT_TONE[v.verdict] : 'text-muted'}`}
+                    >
+                      {v.verdict ? t(VERDICT_LABEL[v.verdict]) : '—'}
+                      {v.error ? (
+                        <span className="ltr block text-[10px] font-normal text-muted">
+                          {v.error}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="ltr px-3 py-2 text-xs tabular-nums">
+                      {v.firedSids.length ? v.firedSids.slice(0, 8).join(', ') : '—'}
+                      {v.firedSids.length > 8 ? ` +${v.firedSids.length - 8}` : ''}
+                      {v.engineVersion ? (
+                        <span className="block text-[10px] text-muted">
+                          suricata {v.engineVersion}
+                        </span>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {canChange ? (
+          <ValidateForm
+            rules={deployedRules.items.map((r) => ({
+              id: r.id,
+              label: `${r.externalId} ${r.name}`,
+            }))}
+            sensors={deployment.items
+              .filter((d) => d.engine === 'suricata')
+              .map((d) => ({
+                id: d.sensorId,
+                label: `${d.sensorName}${d.inSync ? '' : ' (bundle not acknowledged)'}`,
+              }))}
+            labels={{
+              heading: t('bt.validate'),
+              hint: t('bt.validations_hint'),
+              rule: t('bt.rule'),
+              sensor: t('bt.sensor'),
+              sample: t('bt.sample'),
+              note: t('bt.note'),
+              submit: t('bt.validate'),
+              queued: t('bt.queued'),
+              noRules: t('bt.no_deployed_rules'),
+              noSensors: t('bt.no_suricata_sensors'),
+            }}
+          />
+        ) : null}
       </section>
 
       <section className="rounded-lg border border-border bg-surface p-4 text-sm">

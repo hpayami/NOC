@@ -9,8 +9,14 @@ import {
 import type { AuditService } from '../audit/service';
 import type { Db } from '../db/client';
 import { assetServices, assets, detectionRules } from '../db/schema';
-import { alertSiteCondition, assetSiteCondition, eventSiteCondition } from '../middleware/scope';
+import {
+  alertSiteCondition,
+  assetSiteCondition,
+  eventSiteCondition,
+  sensorSiteCondition,
+} from '../middleware/scope';
 import { RuleService } from './service';
+import { ValidationService } from './validation';
 
 /**
  * Detection coverage per ATT&CK technique: registry rules × sensors that acknowledged the
@@ -29,8 +35,13 @@ export class DetectionCoverageService {
     now = new Date(),
   ): Promise<DetectionCoverage> {
     const since = new Date(now.getTime() - days * 86_400_000);
+    const proven = await new ValidationService(this.db, this.audit).provenRuleIds(
+      sensorSiteCondition(scope),
+      now,
+    );
     const rules = await this.db
       .select({
+        id: detectionRules.id,
         lifecycle: detectionRules.lifecycle,
         techniques: detectionRules.attackTechniques,
         source: detectionRules.source,
@@ -79,6 +90,7 @@ export class DetectionCoverageService {
           lifecycle: r.lifecycle,
           techniques: r.techniques,
           engine: engineOfRuleSource(r.source),
+          validated: proven.has(r.id),
         })),
         sensors,
         observed: Object.fromEntries(observedRows.map((r) => [r.technique, Number(r.n)])),

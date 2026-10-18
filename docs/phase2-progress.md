@@ -188,3 +188,60 @@ Coverage reflects the registry only (rules an engine loads outside the platform 
 Zeek scripts carry no technique metadata unless the import names them; observation attribution
 depends on engine tagging; no detection validation (replay a sample through a sensor to prove
 the rule fires) yet — that is the natural next step for this workspace.
+
+## Slice 5 — Detection validation: offline sample replay on the sensor (2026-10-18)
+
+**Delivered**
+
+- **Contract** (`packages/shared/src/entities/validation.ts`): `DetectionValidation`
+  (rule, sensor, sample name, status queued → dispatched → completed | failed | expired,
+  expected vs reported bundle digest, expected / fired / missing signature ids, verdict,
+  engine version, error, timings), `CreateDetectionValidationRequest` (a **sample name**, never
+  a path), `SensorValidationDirective`, `ValidationResultRequest`.
+- **Rule** (`rules/validation.ts`, pure `validationVerdict`): `passed` when every expected
+  signature fired on the expected bundle; `failed` when one is missing; `inconclusive` when
+  the sensor reported an error or ran a different bundle than the platform expected — a result
+  from the wrong rules proves nothing either way. `sidOfExternalId` reads `gid:sid`.
+- **Store** (`0021_phase2_detection_validation`, `detection_validations`) and
+  **service** (`ValidationService`): a validation is accepted only for a **deployed** rule, an
+  **enabled Suricata** sensor, and a rule that is part of the bundle that sensor receives
+  (site targeting); refusals are audited. Sensors fetch their queue (marked dispatched), only
+  their own; results are accepted once; the verdict is derived by the platform, never trusted
+  from the sensor; unanswered requests expire after 30 minutes.
+- **Agent** (`services/sensor-agent/agent/validation.py`): replays the sample **offline**
+  (`suricata -r <sample> -S <managed rules> -l <tmp> -k none --runmode single`), collects fired
+  signature ids from `eve.json` (or `fast.log`), reports engine version and duration; refuses
+  path tricks (`../`, absolute, hidden) and missing samples with an explicit error; when the
+  running bundle is not the expected one it reports that instead of replaying. New settings
+  `NOC_VALIDATION_SAMPLES_DIR`, `NOC_VALIDATION_INTERVAL`. The sample never leaves the sensor
+  and no packet is sent on the wire.
+- **Coverage**: a deployed rule with a fresh (30-day) passed validation on a sensor that
+  currently reports that bundle counts as **proven**; rows carry `rules.proven`, the summary
+  `validated` (covered techniques with at least one proven rule). API
+  `GET/POST /api/v1/detection-rules/validations`, `GET …/validations/{id}` (read / change);
+  sensor `GET /api/v1/agents/validations`, `POST …/validations/{id}/result`.
+- Web: validations table and request form on the blue-team workspace; proven counts in the
+  coverage summary and table.
+
+**Verified**
+
+Shared (2): verdict matrix (pass with extra sids, fail with missing, inconclusive on bundle
+mismatch / error / no expected sid, unknown reported bundle does not block), sid parsing.
+Agent (3 new, 10 total): offline replay command shape (-r sample, -S managed rules, -k none,
+no interface), fired sids and version reported, bundle digest attached, nothing re-run when
+the queue is empty; wrong expected bundle reported without replaying; missing sample,
+traversal and absolute refs refused; engine failure reported; no sample directory reported;
+fast.log fallback. API (1): analyst 403, path-like sample 400, draft rule 409 with reason,
+Zeek sensor 409, unknown sensor 404; queued record shape; another sensor sees nothing and
+cannot report; dispatch once; passed verdict with an unexpected extra sid counted; second
+report 409; proven only after the sensor's heartbeat carries the bundle digest; failed,
+inconclusive (wrong bundle) and sensor-error outcomes; expiry; list filters and ordering;
+audit of refusals and results. Totals: shared 135, API 113 (30 files), web 5, pytest 8 +
+agent 10; e2e 5/5.
+
+**Known limitations**
+
+Validation proves that a signature fires on a sample, not that it fires on live traffic;
+samples are provisioned on the sensor out of band (the platform never stores packet captures);
+Zeek scripts are not validated; a rule proven on one sensor is "proven" for coverage even if
+another sensor of the same engine never ran the sample.

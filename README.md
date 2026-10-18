@@ -208,6 +208,11 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
 
 ## Blue team — detection coverage
 
+- Detection validation: an operator asks a sensor to replay a named local sample **offline**
+  through the bundle it runs (`POST /api/v1/detection-rules/validations`); the agent reports
+  which signatures fired and the platform derives passed / failed / inconclusive (wrong bundle,
+  sensor error). No packet is sent, the sample never leaves the sensor, and a fresh pass on a
+  sensor currently running that bundle marks the rule **proven** in coverage.
 - `GET /api/v1/detection-rules/coverage?days=30` scores every ATT&CK technique in the catalogue:
   covered only when a deployed rule is acknowledged by a running sensor; otherwise deployed but
   unacknowledged, rule not deployed, or uncovered. Observations (engine-tagged events), open

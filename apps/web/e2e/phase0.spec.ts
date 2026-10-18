@@ -198,6 +198,11 @@ test.describe('Phase 0 shell', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('تیم آبی — پوشش تشخیص');
     await expect(page.getByTestId('bt-summary')).toContainText('بدون پوشش');
     await expect(page.getByText('شکافی ثبت نشده است')).toBeVisible();
+    // Validation: nothing requested, and with no deployed rule the form says so instead of offering a run.
+    await expect(page.getByTestId('bt-no-validations')).toBeVisible();
+    await expect(page.getByTestId('bt-validate')).toContainText(
+      'قاعدهٔ مستقری برای اعتبارسنجی وجود ندارد.',
+    );
     // ML analytics: advisory banner, service state reported, no fabricated scores.
     await page.goto('/ml-analytics');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('تحلیل ML (مشورتی)');
