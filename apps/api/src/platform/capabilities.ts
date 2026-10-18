@@ -19,9 +19,10 @@ export const CAPABILITIES: CapabilityStatus[] = [
   },
   {
     id: 'asset.inventory',
-    state: 'not_implemented',
+    state: 'available',
     phase: 1,
-    reason: 'Schema present; no discovery connector registered',
+    reason:
+      'Observation ingestion with deterministic identity resolution; no automatic connectors yet',
   },
   {
     id: 'asset.discovery.passive',
@@ -43,9 +44,9 @@ export const CAPABILITIES: CapabilityStatus[] = [
   },
   {
     id: 'network.topology',
-    state: 'not_implemented',
+    state: 'degraded',
     phase: 1,
-    reason: 'Schema present; no relationship sources',
+    reason: 'Segments and graph API exist; no relationship sources (LLDP/flows) yet',
   },
   {
     id: 'nids.suricata',

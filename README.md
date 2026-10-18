@@ -60,6 +60,19 @@ E2E_EMAIL=... E2E_PASSWORD=... pnpm --filter @noc/web e2e                   # Pl
 
 Recorded Phase 0 results: `docs/phase0-verification.md`.
 
+## Phase 1 progress (asset inventory slice)
+
+- `POST /api/v1/assets/observations` (permission `discovery.run_passive`) stores collector
+  observations and resolves them with the deterministic identity rule in `packages/shared`
+  (agent id → cloud id → MAC overlap → hostname-in-segment; **IP alone never merges**; ties are
+  reported as ambiguous and left unlinked, conflicts are retained).
+- `GET /api/v1/assets` (keyset pagination, filters), `/assets/:id`, `/assets/:id/observations`,
+  `/assets/:id/timeline`, `PATCH /assets/:id` (metadata only, audited), `/assets/coverage`.
+- `GET|POST /api/v1/network/segments` (CIDR → segment inference for observations),
+  `GET /api/v1/network/topology` (nodes + edges with `inferred|verified` labels; no edge sources yet).
+- Web **Asset Inventory** page with coverage/assurance tiles. No discovery connectors exist yet;
+  `asset.inventory` is `available` for API-fed observations only, `network.topology` is `degraded`.
+
 ## What Phase 0 provides
 
 - **Shared contracts** for every domain entity (users, assets, observations, segments, topology,

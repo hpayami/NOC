@@ -28,7 +28,7 @@ export const NAV: NavItem[] = [
     capabilities: ['asset.inventory', 'asset.discovery.passive', 'asset.discovery.active'],
     permission: 'assets.read',
     phase: 1,
-    implemented: false,
+    implemented: true,
   },
   {
     slug: 'topology',

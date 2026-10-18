@@ -41,7 +41,7 @@ describe('platform endpoints', () => {
     expect(body.demoData).toBe(false);
     expect(body.database.migrationsApplied).toBeGreaterThan(0);
     const available = body.capabilities.filter((c) => c.state === 'available').map((c) => c.id);
-    expect(available).toEqual(['auth.rbac', 'audit.tamper_evident']);
+    expect(available).toEqual(['auth.rbac', 'audit.tamper_evident', 'asset.inventory']);
     expect(body.capabilities.find((c) => c.id === 'nips.inline_prevention')?.state).toBe(
       'disabled',
     );

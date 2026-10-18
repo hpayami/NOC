@@ -57,6 +57,12 @@ test.describe('Phase 0 shell', () => {
     await page.getByRole('button', { name: 'تأیید یکپارچگی زنجیره' }).click();
     await expect(page.locator('span[role="status"]')).toContainText('زنجیره سالم است');
 
+    // Asset inventory (Phase 1 slice): honest empty state, coverage tiles, no fabricated rows.
+    await page.goto('/assets');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('موجودی دارایی‌ها');
+    await expect(page.getByText('هنوز دارایی‌ای ثبت نشده است')).toBeVisible();
+    await expect(page.getByText('POST /api/v1/assets/observations')).toBeVisible();
+
     // Unimplemented workspace shows real capability state, never sample data.
     await page.goto('/nids');
     await expect(page.getByText('این بخش هنوز عملیاتی نیست')).toBeVisible();

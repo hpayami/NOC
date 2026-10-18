@@ -41,6 +41,8 @@ export type AssetInterface = z.infer<typeof AssetInterface>;
 export const Asset = z.strictObject({
   id: Id,
   hostname: ShortText.nullable(),
+  /** Derived from interfaces for display; never an identity. */
+  ipAddresses: z.array(IpAddress).max(64),
   assetClass: AssetClass,
   manufacturer: ShortText.nullable(),
   model: ShortText.nullable(),

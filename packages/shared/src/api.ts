@@ -1,6 +1,20 @@
 import { z } from 'zod';
-import { Id, Timestamp } from './common';
-import { AssuranceStateValues } from './enums';
+import { Id, PageQuery, ShortText, Timestamp } from './common';
+import {
+  AssetClass,
+  AssuranceState,
+  AssuranceStateValues,
+  CoverageState,
+  Criticality,
+  OperationalStatus,
+} from './enums';
+import {
+  Asset,
+  AssetInterface,
+  AssetObservation,
+  NetworkSegment,
+  TopologyRelationship,
+} from './entities/assets';
 import { PermissionSchema, RoleKeySchema } from './rbac';
 import { User } from './entities/identity';
 
@@ -95,3 +109,86 @@ export const AuditVerifyResponse = z.strictObject({
   reason: z.string().nullable(),
 });
 export type AuditVerifyResponse = z.infer<typeof AuditVerifyResponse>;
+
+// ---- Phase 1: asset inventory & network ----------------------------------------------------
+
+/** What a collector submits. Ids and links are assigned by the platform, never by the collector. */
+export const IngestObservationRequest = AssetObservation.omit({
+  id: true,
+  assetId: true,
+  conflictsWith: true,
+});
+export type IngestObservationRequest = z.infer<typeof IngestObservationRequest>;
+
+export const IngestObservationResponse = z.strictObject({
+  observationId: Id,
+  assetId: Id.nullable(),
+  decision: z.enum(['match', 'create', 'ambiguous']),
+  reason: z.string().max(64),
+  confidence: z.number().min(0).max(1).nullable(),
+  conflicts: z.array(z.string().max(64)).max(16),
+  candidateIds: z.array(Id).max(50),
+});
+export type IngestObservationResponse = z.infer<typeof IngestObservationResponse>;
+
+export const AssetListQuery = PageQuery.extend({
+  segmentId: Id.optional(),
+  assetClass: AssetClass.optional(),
+  coverage: CoverageState.optional(),
+  status: OperationalStatus.optional(),
+  q: z.string().trim().min(1).max(128).optional(),
+});
+export type AssetListQuery = z.infer<typeof AssetListQuery>;
+
+export const AssetDetail = z.strictObject({ asset: Asset, interfaces: z.array(AssetInterface) });
+export type AssetDetail = z.infer<typeof AssetDetail>;
+
+/** Operator-maintained metadata only. Identity fields (hostname, addresses) come from observations. */
+export const AssetPatchRequest = z
+  .strictObject({
+    assetClass: AssetClass.optional(),
+    criticality: Criticality.optional(),
+    role: ShortText.nullable().optional(),
+    owner: ShortText.nullable().optional(),
+    responsibleTeam: ShortText.nullable().optional(),
+    segmentId: Id.nullable().optional(),
+  })
+  .refine((o) => Object.keys(o).length > 0, 'Patch must change at least one field');
+export type AssetPatchRequest = z.infer<typeof AssetPatchRequest>;
+
+export const AssetCoverageSummary = z.strictObject({
+  total: z.number().int().nonnegative(),
+  byCoverage: z.record(CoverageState, z.number().int().nonnegative()),
+  byAssurance: z.record(AssuranceState, z.number().int().nonnegative()),
+  byClass: z.record(z.string(), z.number().int().nonnegative()),
+  unresolvedObservations: z.number().int().nonnegative(),
+  generatedAt: Timestamp,
+});
+export type AssetCoverageSummary = z.infer<typeof AssetCoverageSummary>;
+
+export const AssetTimelineEntry = z.strictObject({
+  at: Timestamp,
+  kind: z.enum(['observation', 'audit']),
+  summary: z.string().max(512),
+  ref: z.string().max(128),
+});
+export type AssetTimelineEntry = z.infer<typeof AssetTimelineEntry>;
+
+export const CreateSegmentRequest = NetworkSegment.omit({ id: true });
+export type CreateSegmentRequest = z.infer<typeof CreateSegmentRequest>;
+
+export const TopologyGraph = z.strictObject({
+  nodes: z.array(
+    z.strictObject({
+      id: Id,
+      label: z.string().max(256),
+      assetClass: AssetClass,
+      segmentId: Id.nullable(),
+      operationalStatus: OperationalStatus,
+    }),
+  ),
+  edges: z.array(TopologyRelationship),
+  truncated: z.boolean(),
+  generatedAt: Timestamp,
+});
+export type TopologyGraph = z.infer<typeof TopologyGraph>;

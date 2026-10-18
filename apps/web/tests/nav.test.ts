@@ -14,13 +14,13 @@ describe('navigation and i18n', () => {
       for (const l of LOCALES) expect(MESSAGES[l][n.label], `${l}:${n.label}`).toBeTruthy();
     }
   });
-  it('marks only Phase 0 workspaces as implemented', () => {
+  it('marks only delivered workspaces (Phase ≤ 1) as implemented', () => {
     expect(
       NAV.filter((n) => n.implemented)
         .map((n) => n.slug)
         .sort(),
-    ).toEqual(['administration', 'audit-logs', 'command-center']);
-    for (const n of NAV) if (n.implemented) expect(n.phase).toBe(0);
+    ).toEqual(['administration', 'assets', 'audit-logs', 'command-center']);
+    for (const n of NAV) if (n.implemented) expect(n.phase).toBeLessThanOrEqual(1);
   });
   it('has identical message keys in fa and en and is Persian-first RTL', () => {
     expect(Object.keys(MESSAGES.en).sort()).toEqual(Object.keys(MESSAGES.fa).sort());
