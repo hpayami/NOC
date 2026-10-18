@@ -93,9 +93,17 @@ export const CAPABILITIES: CapabilityStatus[] = [
   },
   {
     id: 'response.actions',
-    state: 'not_implemented',
+    state: 'available',
     phase: 3,
-    reason: 'Approval rules implemented and tested; execution integrations absent',
+    reason:
+      'Propose → approve (two-person, SoD, expiry) → execute → rollback, fully audited; in-platform executors: escalate, recommend_isolation, collect_evidence',
+  },
+  {
+    id: 'response.enforcement_executors',
+    state: 'not_configured',
+    phase: 3,
+    reason:
+      'Endpoint isolation, indicator blocking, session disabling and rule deployment have no integration; such actions can be approved but execution is refused',
   },
   {
     id: 'nips.inline_prevention',

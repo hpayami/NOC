@@ -50,6 +50,13 @@
       "when": 1792316952393,
       "tag": "0006_phase3_incidents_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792318316524,
+      "tag": "0007_phase3_response_actions",
+      "breakpoints": true
     }
   ]
 }

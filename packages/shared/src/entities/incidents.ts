@@ -13,6 +13,7 @@ export const INCIDENT_TIMELINE_KINDS = [
   'updated',
   'alert_linked',
   'alert_unlinked',
+  'response_action',
 ] as const;
 export const IncidentTimelineKind = z.enum(INCIDENT_TIMELINE_KINDS);
 export type IncidentTimelineKind = z.infer<typeof IncidentTimelineKind>;

@@ -12,6 +12,7 @@ import { agentRoutes } from './routes/agents';
 import { alertRoutes, eventRoutes } from './routes/alerts';
 import { incidentRoutes } from './routes/incidents';
 import { ingestRoutes } from './routes/ingest';
+import { responseRoutes } from './routes/response';
 import { retentionRoutes } from './routes/retention';
 import { ruleRoutes } from './routes/rules';
 import { assetRoutes } from './routes/assets';
@@ -113,6 +114,7 @@ export function createApp(deps: Deps) {
   app.route('/api/v1/events', eventRoutes(deps));
   app.route('/api/v1/detection-rules', ruleRoutes(deps));
   app.route('/api/v1/incidents', incidentRoutes(deps));
+  app.route('/api/v1/response-actions', responseRoutes(deps));
   app.route('/api/v1/retention', retentionRoutes(deps, deps.retention));
   app.route('/api/v1/platform', platformRoutes(deps));
   app.route('/api/v1/audit', auditRoutes(deps));

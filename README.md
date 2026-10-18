@@ -119,7 +119,13 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   bounded scheduled purge of events, metrics and observations. The audit trail is never purged;
   classes without a store report `dataset_absent` rather than a fake success.
 - Web **Incident Response** workspace (list, create, detail with timeline/notes/transitions) and
-  one-click incident creation from the SOC alert queue. See `docs/phase3-progress.md`.
+  one-click incident creation from the SOC alert queue.
+- `/api/v1/response-actions`: propose → approve (two-person for high-impact kinds, proposer may
+  not approve, approver may not execute, expiry) → execute → roll back, fully audited. Only
+  platform-owned executors exist (`escalate`, `recommend_isolation`, `collect_evidence`);
+  network/endpoint/identity enforcement kinds can be approved but execution is refused until a
+  verified integration exists — `GET /executors` reports exactly that. See
+  `docs/phase3-progress.md`.
 
 ## What Phase 0 provides
 

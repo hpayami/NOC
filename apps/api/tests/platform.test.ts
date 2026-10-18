@@ -53,6 +53,7 @@ describe('platform endpoints', () => {
       'soc.alerts',
       'soc.incidents',
       'data.retention',
+      'response.actions',
       'detection.rule_registry',
     ]);
     expect(body.capabilities.find((c) => c.id === 'nips.inline_prevention')?.state).toBe(

@@ -7,6 +7,7 @@ import { getSessionUser } from '@/lib/session';
 import { assignIncidentToMe } from '../actions';
 import { SEV_STYLE, STATUS_LABEL } from '../labels';
 import { NoteForm, TransitionControls } from './controls';
+import { ResponseActionsSection } from './response-actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,7 @@ const KIND_LABEL: Record<IncidentTimelineKind, MessageKey> = {
   updated: 'inc.kind.updated',
   alert_linked: 'inc.kind.alert_linked',
   alert_unlinked: 'inc.kind.alert_unlinked',
+  response_action: 'inc.kind.response_action',
 };
 
 export default async function IncidentPage({ params }: { params: Promise<{ id: string }> }) {
@@ -126,6 +128,11 @@ export default async function IncidentPage({ params }: { params: Promise<{ id: s
               labels={{ note: t('inc.note'), submit: t('inc.add_note') }}
             />
           ) : null}
+          <ResponseActionsSection
+            incidentId={incident.id}
+            closed={closed}
+            permissions={new Set(me?.permissions ?? [])}
+          />
         </section>
 
         <aside className="space-y-4">

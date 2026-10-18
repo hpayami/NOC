@@ -28,3 +28,4 @@ export * from './rules/alert-state';
 export * from './entities/ingest';
 export * from './entities/incidents';
 export * from './entities/retention';
+export * from './entities/response';

@@ -95,6 +95,8 @@ export const responseActions = pgTable(
     executedAt: ts('executed_at'),
     expiresAt: ts('expires_at'),
     rollbackPlan: text('rollback_plan').notNull().default(''),
+    justification: text('justification').notNull().default(''),
+    parameters: jsonb('parameters').$type<Record<string, unknown>>().notNull().default({}),
     rolledBackAt: ts('rolled_back_at'),
     verificationResult: text('verification_result').notNull().default('not_run'),
     result: jsonb('result').$type<Record<string, unknown>>().notNull().default({}),

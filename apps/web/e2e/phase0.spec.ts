@@ -135,6 +135,16 @@ test.describe('Phase 0 shell', () => {
     await expect(page.getByTestId('incident-status')).toHaveText('دسته‌بندی');
     // An analyst holds incidents.manage but not incidents.close: no close button is offered.
     await expect(page.getByRole('button', { name: '→ بسته' })).toHaveCount(0);
+    // Response actions: proposing changes nothing; collect_evidence needs no approval but the
+    // analyst holds no response.execute, so the action waits for a responder.
+    await expect(page.getByText('اقدامی برای این حادثه پیشنهاد نشده است.')).toBeVisible();
+    await page.getByLabel('هدف', { exact: true }).fill('10.0.0.9');
+    await page.getByLabel('توجیه').fill('Preserve flow records before containment');
+    await page.getByLabel('برنامهٔ بازگشت').fill('References only; nothing to undo');
+    await page.getByRole('button', { name: 'ثبت پیشنهاد' }).click();
+    await expect(page.getByTestId('response-status')).toHaveText('تأییدشده');
+    await expect(page.getByRole('button', { name: 'اجرا', exact: true })).toHaveCount(0);
+    await expect(page.getByText('اقدام پاسخ').first()).toBeVisible();
     // Analysts cannot administer users: forbidden page, not a crash.
     await page.goto('/administration');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('دسترسی مجاز نیست');
