@@ -20,3 +20,6 @@ export * from './entities/collectors';
 export * from './rules/discovery';
 export * from './entities/agents';
 export * from './parsers/neighbors';
+export * from './engines/suricata';
+export * from './rules/alert-state';
+export * from './entities/ingest';

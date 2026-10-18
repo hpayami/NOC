@@ -34,6 +34,9 @@ export async function apiFetch<T>(
     cache: 'no-store',
   });
   if (res.status === 401) redirect('/login?reason=expired');
+  // Server-side authorization is final; surface it as a page instead of a crashed render.
+  if (res.status === 403 && (init.method ?? 'GET') === 'GET' && !init.allowForbidden)
+    redirect(`/forbidden?from=${encodeURIComponent(path)}`);
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as {
       error?: { code?: string; message?: string };

@@ -56,20 +56,21 @@ export const CAPABILITIES: CapabilityStatus[] = [
     id: 'nids.suricata',
     state: 'not_configured',
     phase: 2,
-    reason: 'No Suricata sensor registered; EVE ingestion not enabled',
+    reason: 'EVE JSON ingestion ready; no Suricata sensor registered',
   },
   { id: 'nsm.zeek', state: 'not_configured', phase: 2, reason: 'No Zeek sensor registered' },
   {
     id: 'events.pipeline',
-    state: 'not_implemented',
+    state: 'available',
     phase: 2,
-    reason: 'Normalized envelope defined; ingestion pipeline not built',
+    reason:
+      'Normalized envelope v1, dedup, asset correlation, bounded batches, rejection reporting, lag metrics',
   },
   {
     id: 'soc.alerts',
-    state: 'not_implemented',
+    state: 'available',
     phase: 2,
-    reason: 'Schema present; no detections produce alerts yet',
+    reason: 'Alert queue from Suricata detections with explainable priority and audited triage',
   },
   {
     id: 'soc.incidents',
@@ -102,3 +103,29 @@ export const CAPABILITIES: CapabilityStatus[] = [
     reason: 'Analysis service exposes health only; no models trained',
   },
 ];
+
+/** Capabilities whose state depends on what is registered and reporting right now. */
+export function resolveCapabilities(input: {
+  suricataSensors: Array<{ enabled: boolean; lastEventAt: Date | null }>;
+  now: Date;
+}): CapabilityStatus[] {
+  return CAPABILITIES.map((cap) => {
+    if (cap.id !== 'nids.suricata') return cap;
+    const enabled = input.suricataSensors.filter((s) => s.enabled);
+    if (enabled.length === 0) return cap;
+    const fresh = enabled.filter(
+      (s) => s.lastEventAt && input.now.getTime() - s.lastEventAt.getTime() < 10 * 60_000,
+    );
+    if (fresh.length === enabled.length)
+      return {
+        ...cap,
+        state: 'available',
+        reason: `${fresh.length} Suricata sensor(s) delivering events`,
+      };
+    return {
+      ...cap,
+      state: 'degraded',
+      reason: `${fresh.length}/${enabled.length} Suricata sensor(s) delivered events in the last 10 minutes`,
+    };
+  });
+}

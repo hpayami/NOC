@@ -35,6 +35,8 @@ const EnvSchema = z
     COOKIE_SECURE: bool.optional(),
     TRUST_PROXY: bool.default(false),
     BODY_LIMIT_BYTES: z.coerce.number().int().min(1024).max(10_485_760).default(262_144),
+    /** Engine telemetry batches are larger than API calls; still bounded. */
+    INGEST_BODY_LIMIT_BYTES: z.coerce.number().int().min(65_536).max(33_554_432).default(4_194_304),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),

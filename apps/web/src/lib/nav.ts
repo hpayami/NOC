@@ -44,7 +44,7 @@ export const NAV: NavItem[] = [
     capabilities: ['nids.suricata', 'nsm.zeek', 'events.pipeline'],
     permission: 'events.read',
     phase: 2,
-    implemented: false,
+    implemented: true,
   },
   {
     slug: 'nips',
@@ -68,7 +68,7 @@ export const NAV: NavItem[] = [
     capabilities: ['soc.alerts'],
     permission: 'alerts.read',
     phase: 2,
-    implemented: false,
+    implemented: true,
   },
   {
     slug: 'incidents',

@@ -29,6 +29,13 @@
       "when": 1792313057331,
       "tag": "0003_phase1_agents",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792314085994,
+      "tag": "0004_phase2_events",
+      "breakpoints": true
     }
   ]
 }

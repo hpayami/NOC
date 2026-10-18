@@ -15,7 +15,7 @@ import type { Deps } from '../app-deps';
 import { alerts, assets, auditEvents, incidents, sensors } from '../db/schema';
 import { requirePermission } from '../middleware/auth';
 import type { AppEnv } from '../middleware/context';
-import { CAPABILITIES } from '../platform/capabilities';
+import { resolveCapabilities } from '../platform/capabilities';
 
 const err = (d: string) => ({
   description: d,
@@ -165,6 +165,13 @@ export function platformRoutes(deps: Deps) {
         value: null,
         observedAt: null,
       });
+      const lag = (await deps.db.execute(
+        sql`select max(extract(epoch from (now() - last_event_at))) as max from sensors where last_event_at is not null`,
+      )) as unknown as Array<{ max: string | number | null }>;
+      const rejected = (await deps.metrics.eventsRejected.get()).values.reduce(
+        (a, v) => a + v.value,
+        0,
+      );
       const metrics: Metric[] =
         database.state === 'available'
           ? [
@@ -195,8 +202,25 @@ export function platformRoutes(deps: Deps) {
       metrics.push(
         pending('sensors.healthy', 'sensor_heartbeat'),
         pending('sensors.unhealthy', 'sensor_heartbeat'),
-        pending('events.ingest_lag_seconds', 'event_pipeline'),
-        pending('events.ingest_failures', 'event_pipeline'),
+        (() => {
+          const row = lag[0];
+          return row && row.max !== null
+            ? ({
+                id: 'events.ingest_lag_seconds',
+                source: 'event_pipeline',
+                sourceState: 'available',
+                value: Math.round(Number(row.max)),
+                observedAt: now,
+              } as Metric)
+            : pending('events.ingest_lag_seconds', 'event_pipeline');
+        })(),
+        {
+          id: 'events.ingest_failures',
+          source: 'event_pipeline',
+          sourceState: 'available',
+          value: rejected,
+          observedAt: now,
+        } as Metric,
         pending('network.traffic_bps', 'flow_collector'),
         pending('vulnerabilities.open', 'assessment_plane'),
         pending('response_actions.recent', 'response_plane'),
@@ -208,7 +232,13 @@ export function platformRoutes(deps: Deps) {
         environment: deps.env.NODE_ENV,
         demoData: false,
         database,
-        capabilities: CAPABILITIES,
+        capabilities: resolveCapabilities({
+          suricataSensors: await deps.db
+            .select({ enabled: sensors.enabled, lastEventAt: sensors.lastEventAt })
+            .from(sensors)
+            .where(sql`${sensors.kind} = 'suricata'`),
+          now: new Date(),
+        }),
         metrics,
         assuranceStates: [...AssuranceStateValues],
         generatedAt: now,

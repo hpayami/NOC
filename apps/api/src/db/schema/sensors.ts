@@ -36,6 +36,8 @@ export const sensors = pgTable(
     enrolledAt: ts('enrolled_at'),
     registeredAt: ts('registered_at').notNull().defaultNow(),
     lastHeartbeatAt: ts('last_heartbeat_at'),
+    /** Newest event time accepted from this sensor; drives the ingestion-lag metric. */
+    lastEventAt: ts('last_event_at'),
   },
   (t) => [
     index('sensors_kind_enabled_idx').on(t.kind, t.enabled),

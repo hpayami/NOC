@@ -29,7 +29,48 @@ export function createMetrics() {
     registers: [registry],
   });
 
-  return { registry, httpRequests, httpDuration, authFailures, dbUp };
+  const eventsIngested = new Counter({
+    name: 'noc_api_events_ingested_total',
+    help: 'Normalized events accepted by sensor and product',
+    labelNames: ['sensor', 'product'] as const,
+    registers: [registry],
+  });
+  const eventsDuplicate = new Counter({
+    name: 'noc_api_events_duplicate_total',
+    help: 'Events dropped as exact duplicates',
+    registers: [registry],
+  });
+  const eventsRejected = new Counter({
+    name: 'noc_api_events_rejected_total',
+    help: 'Records rejected during normalization by reason',
+    labelNames: ['reason'] as const,
+    registers: [registry],
+  });
+  const alertsCreated = new Counter({
+    name: 'noc_api_alerts_created_total',
+    help: 'Alerts opened by severity',
+    labelNames: ['severity'] as const,
+    registers: [registry],
+  });
+  const ingestLag = new Gauge({
+    name: 'noc_api_ingest_lag_seconds',
+    help: 'Seconds between the newest accepted event time and ingestion, per sensor',
+    labelNames: ['sensor'] as const,
+    registers: [registry],
+  });
+
+  return {
+    registry,
+    httpRequests,
+    httpDuration,
+    authFailures,
+    dbUp,
+    eventsIngested,
+    eventsDuplicate,
+    eventsRejected,
+    alertsCreated,
+    ingestLag,
+  };
 }
 
 export type Metrics = ReturnType<typeof createMetrics>;

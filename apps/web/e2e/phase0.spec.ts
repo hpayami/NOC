@@ -78,15 +78,44 @@ test.describe('Phase 0 shell', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('سنسورها و جمع‌آورها');
     await expect(page.getByText('هیچ سنسور یا جمع‌آوری ثبت نشده است.')).toBeVisible();
 
+    // A platform admin holds no SOC permissions: the API's 403 becomes a clear page, not a crash.
+    await page.goto('/soc-alerts');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('دسترسی مجاز نیست');
+
     // Unimplemented workspace shows real capability state, never sample data.
-    await page.goto('/nids');
+    await page.goto('/nips');
     await expect(page.getByText('این بخش هنوز عملیاتی نیست')).toBeVisible();
-    await expect(page.getByText('nids.suricata')).toBeVisible();
+    await expect(page.getByText('nips.inline_prevention')).toBeVisible();
 
     // Logout clears the session; shell redirects to login.
     await page.getByRole('button', { name: 'خروج' }).click();
     await expect(page).toHaveURL(/\/login/);
     await page.goto('/command-center');
     await expect(page).toHaveURL(/\/login/);
+  });
+
+  test('a SOC analyst sees the alert queue and NIDS monitoring with honest empty states', async ({
+    page,
+  }) => {
+    const analystEmail = process.env.E2E_ANALYST_EMAIL;
+    const analystPassword = process.env.E2E_ANALYST_PASSWORD;
+    test.skip(
+      !analystEmail || !analystPassword,
+      'E2E_ANALYST_EMAIL and E2E_ANALYST_PASSWORD are required',
+    );
+    await page.goto('/login');
+    await page.getByLabel('ایمیل').fill(analystEmail!);
+    await page.getByLabel('گذرواژه').fill(analystPassword!);
+    await page.getByRole('button', { name: 'ورود' }).click();
+    await expect(page).toHaveURL(/\/command-center$/);
+    await page.goto('/soc-alerts');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('هشدارهای SOC');
+    await expect(page.getByText('هشدار بازی وجود ندارد.')).toBeVisible();
+    await page.goto('/nids');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('پایش NIDS');
+    await expect(page.getByText('هیچ سنسور Suricata/Zeek ثبت نشده است.')).toBeVisible();
+    // Analysts cannot administer users: forbidden page, not a crash.
+    await page.goto('/administration');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('دسترسی مجاز نیست');
   });
 });

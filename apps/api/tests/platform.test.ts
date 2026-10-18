@@ -49,6 +49,8 @@ describe('platform endpoints', () => {
       'asset.discovery.active',
       'noc.health_monitoring',
       'network.topology',
+      'events.pipeline',
+      'soc.alerts',
     ]);
     expect(body.capabilities.find((c) => c.id === 'nips.inline_prevention')?.state).toBe(
       'disabled',

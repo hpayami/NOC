@@ -26,6 +26,7 @@ export const PERMISSION_CATALOG = {
   'monitoring.ingest': 'Report check results, heartbeats and metrics (collectors)',
   'events.read': 'Read normalized security events',
   'events.search': 'Run bounded threat-hunting queries',
+  'events.ingest': 'Replay engine telemetry fixtures into a registered sensor (detection testing)',
   'alerts.read': 'View alerts',
   'alerts.triage': 'Acknowledge, assign, suppress and dispose alerts',
   'incidents.read': 'View incidents',
@@ -236,6 +237,7 @@ export const ROLE_DEFINITIONS: Record<RoleKey, RoleDefinition> = {
       'ml.read',
       'assessments.read',
       'response.read',
+      'events.ingest',
     ],
   },
   red_team_operator: {

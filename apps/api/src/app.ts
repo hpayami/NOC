@@ -9,6 +9,8 @@ import { requestContext, type AppEnv } from './middleware/context';
 import { errorBody, notFound, onError } from './middleware/errors';
 import { rateLimit } from './middleware/rate-limit';
 import { agentRoutes } from './routes/agents';
+import { alertRoutes, eventRoutes } from './routes/alerts';
+import { ingestRoutes } from './routes/ingest';
 import { assetRoutes } from './routes/assets';
 import { authRoutes } from './routes/auth';
 import { collectorRoutes } from './routes/collectors';
@@ -59,14 +61,16 @@ export function createApp(deps: Deps) {
       maxAge: 600,
     }),
   );
-  app.use(
-    '*',
+  const limitFor = (max: number) =>
     bodyLimit({
-      maxSize: env.BODY_LIMIT_BYTES,
+      maxSize: max,
       onError: () => {
         throw new HTTPException(413, { message: 'Request body too large' });
       },
-    }),
+    });
+  app.use('/api/v1/ingest/*', limitFor(env.INGEST_BODY_LIMIT_BYTES));
+  app.use('*', async (c, next) =>
+    c.req.path.startsWith('/api/v1/ingest/') ? next() : limitFor(env.BODY_LIMIT_BYTES)(c, next),
   );
   app.use('*', async (c, next) => {
     const end = metrics.httpDuration.startTimer({ method: c.req.method, route: c.req.routePath });
@@ -80,6 +84,7 @@ export function createApp(deps: Deps) {
   });
   app.use('*', authenticate(db, tokens));
   app.use('/api/v1/agents/*', authenticateSensor(db));
+  app.use('/api/v1/ingest/*', authenticateSensor(db));
   app.use(
     '/api/*',
     rateLimit(limiter, { name: 'api', capacity: 300, refillPerSecond: 5, keyBy: 'ip+user' }),
@@ -97,6 +102,9 @@ export function createApp(deps: Deps) {
   app.route('/api/v1/discovery', discoveryRoutes(deps).app);
   app.route('/api/v1/collectors', collectorRoutes(deps));
   app.route('/api/v1/agents', agentRoutes(deps).app);
+  app.route('/api/v1/ingest', ingestRoutes(deps));
+  app.route('/api/v1/alerts', alertRoutes(deps));
+  app.route('/api/v1/events', eventRoutes(deps));
   app.route('/api/v1/platform', platformRoutes(deps));
   app.route('/api/v1/audit', auditRoutes(deps));
 

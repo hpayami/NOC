@@ -91,6 +91,16 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   **Sensors & collectors** page. The agent binary is not part of this repository yet; the contract
   and `ip neigh` / `dhcpd.leases` parsers are.
 
+## Phase 2 progress (NIDS and SOC alert queue)
+
+- `POST /api/v1/ingest/suricata/eve`: Suricata EVE JSON (NDJSON or array, ≤ 1000 records) from an
+  enrolled sensor — or audited fixture replay by `events.ingest` holders — is normalized to the
+  v1 event envelope **without payloads**, deduplicated, correlated to assets and turned into an
+  alert queue with explainable priority. Rejections are reported per record, never dropped.
+- `GET /api/v1/events` (bounded), `/events/stats`, `/alerts` with audited triage (`PATCH`).
+- Web **SOC Alerts** and **NIDS Monitoring** pages. `nids.suricata` capability is dynamic:
+  it is `available` only while registered sensors deliver events.
+
 ## What Phase 0 provides
 
 - **Shared contracts** for every domain entity (users, assets, observations, segments, topology,
