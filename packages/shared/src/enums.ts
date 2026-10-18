@@ -301,6 +301,14 @@ export const RemediationStatusValues = [
 export const RemediationStatus = e(RemediationStatusValues);
 export type RemediationStatus = z.infer<typeof RemediationStatus>;
 
+export const CheckKindValues = ['tcp', 'http', 'icmp'] as const;
+export const CheckKind = e(CheckKindValues);
+export type CheckKind = z.infer<typeof CheckKind>;
+
+export const CheckOutcomeValues = ['up', 'down', 'timeout', 'error', 'unsupported'] as const;
+export const CheckOutcome = e(CheckOutcomeValues);
+export type CheckOutcome = z.infer<typeof CheckOutcome>;
+
 export const CoverageStateValues = ['monitored', 'partial', 'unmonitored', 'unknown'] as const;
 export const CoverageState = e(CoverageStateValues);
 export type CoverageState = z.infer<typeof CoverageState>;

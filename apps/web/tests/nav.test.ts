@@ -19,7 +19,7 @@ describe('navigation and i18n', () => {
       NAV.filter((n) => n.implemented)
         .map((n) => n.slug)
         .sort(),
-    ).toEqual(['administration', 'assets', 'audit-logs', 'command-center']);
+    ).toEqual(['administration', 'assets', 'audit-logs', 'command-center', 'noc']);
     for (const n of NAV) if (n.implemented) expect(n.phase).toBeLessThanOrEqual(1);
   });
   it('has identical message keys in fa and en and is Persian-first RTL', () => {

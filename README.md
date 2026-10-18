@@ -72,6 +72,13 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   `GET /api/v1/network/topology` (nodes + edges with `inferred|verified` labels; no edge sources yet).
 - Web **Asset Inventory** page with coverage/assurance tiles. No discovery connectors exist yet;
   `asset.inventory` is `available` for API-fed observations only, `network.topology` is `degraded`.
+- **Availability monitoring** (`/api/v1/monitoring/*`): TCP checks executed in-process by the API
+  (targets must be addresses the inventory attributes to the asset; public addresses refused),
+  collector-run checks reporting results, maintenance windows, per-asset metrics
+  (`/assets/:id/metrics`, 7-day bounded reads), sensor/collector registry with heartbeats
+  (`/api/v1/sensors/*`). Operational status is derived from evidence: a silent collector yields
+  `unreachable_monitoring_path`, never `offline`. ICMP/HTTP checks are stored as `unsupported`
+  until an executor exists. Web **NOC Operations** page.
 
 ## What Phase 0 provides
 

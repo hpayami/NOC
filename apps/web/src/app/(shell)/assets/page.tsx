@@ -92,6 +92,7 @@ export default async function AssetsPage({
                 <th className="px-3 py-2 text-start">{t('assets.hostname')}</th>
                 <th className="px-3 py-2 text-start">{t('assets.class')}</th>
                 <th className="px-3 py-2 text-start">{t('assets.ips')}</th>
+                <th className="px-3 py-2 text-start">{t('admin.status')}</th>
                 <th className="px-3 py-2 text-start">{t('assets.coverage')}</th>
                 <th className="px-3 py-2 text-start">{t('assets.assurance')}</th>
                 <th className="px-3 py-2 text-start">{t('assets.confidence')}</th>

@@ -58,9 +58,9 @@ export const NAV: NavItem[] = [
     slug: 'noc',
     label: 'nav.noc',
     capabilities: ['noc.health_monitoring'],
-    permission: 'assets.read',
+    permission: 'monitoring.read',
     phase: 1,
-    implemented: false,
+    implemented: true,
   },
   {
     slug: 'soc-alerts',

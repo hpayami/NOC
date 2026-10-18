@@ -5,6 +5,7 @@ import { AuditService } from './audit/service';
 import { loadEnv } from './config/env';
 import { createDb } from './db/client';
 import { RateLimiter } from './middleware/rate-limit';
+import { AvailabilityService, MonitoringScheduler } from './monitoring/service';
 import { createMetrics } from './platform/metrics';
 import { syncRbacCatalog } from './platform/seed';
 import { TokenService } from './security/tokens';
@@ -40,12 +41,20 @@ async function main() {
   };
   const app = createApp(deps);
 
+  const scheduler = new MonitoringScheduler(handle.db, new AvailabilityService(handle.db), {
+    tickSeconds: env.MONITORING_TICK_SECONDS,
+    maxConcurrency: env.MONITORING_MAX_CONCURRENCY,
+    logger,
+  });
+  if (env.MONITORING_SCHEDULER_ENABLED) scheduler.start();
+
   const server = serve({ fetch: app.fetch, hostname: env.API_HOST, port: env.API_PORT }, (info) => {
     logger.info({ host: info.address, port: info.port, env: env.NODE_ENV }, 'noc-api listening');
   });
 
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'shutting down');
+    scheduler.stop();
     server.close();
     await handle.close();
     process.exit(0);

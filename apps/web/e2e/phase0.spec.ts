@@ -63,6 +63,11 @@ test.describe('Phase 0 shell', () => {
     await expect(page.getByText('هنوز دارایی‌ای ثبت نشده است')).toBeVisible();
     await expect(page.getByText('POST /api/v1/assets/observations')).toBeVisible();
 
+    // NOC operations: status tiles from real evidence, no sensors registered yet.
+    await page.goto('/noc');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('عملیات NOC');
+    await expect(page.getByText('هیچ سنسور یا جمع‌آوری ثبت نشده است.')).toBeVisible();
+
     // Unimplemented workspace shows real capability state, never sample data.
     await page.goto('/nids');
     await expect(page.getByText('این بخش هنوز عملیاتی نیست')).toBeVisible();

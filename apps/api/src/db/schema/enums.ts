@@ -1,6 +1,8 @@
 import { pgEnum } from 'drizzle-orm/pg-core';
 import {
   AlertStatusValues,
+  CheckKindValues,
+  CheckOutcomeValues,
   AssetClassValues,
   AssuranceStateValues,
   ConfidenceValues,
@@ -59,6 +61,8 @@ export const userStatusEnum = pgEnum('user_status', UserStatusValues);
 export const ruleSourceEnum = pgEnum('rule_source', RuleSourceValues);
 export const ruleLifecycleEnum = pgEnum('rule_lifecycle', RuleLifecycleValues);
 export const coverageStateEnum = pgEnum('coverage_state', CoverageStateValues);
+export const checkKindEnum = pgEnum('check_kind', CheckKindValues);
+export const checkOutcomeEnum = pgEnum('check_outcome', CheckOutcomeValues);
 export const auditOutcomeEnum = pgEnum('audit_outcome', ['success', 'denied', 'failure']);
 export const approvalSubjectEnum = pgEnum('approval_subject', [
   'response_action',

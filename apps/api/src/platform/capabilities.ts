@@ -38,9 +38,10 @@ export const CAPABILITIES: CapabilityStatus[] = [
   },
   {
     id: 'noc.health_monitoring',
-    state: 'not_implemented',
+    state: 'degraded',
     phase: 1,
-    reason: 'SNMPv3/agent pollers not yet implemented',
+    reason:
+      'TCP availability checks, collector heartbeats, maintenance windows and metric ingestion; SNMPv3/agent pollers pending',
   },
   {
     id: 'network.topology',

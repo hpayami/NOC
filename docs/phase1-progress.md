@@ -39,3 +39,39 @@ Tracks delivered slices of `phase-1-plan.md`. Each entry lists what is verified 
 Passive discovery connectors (ARP/DHCP/DNS), SNMPv3 poller, host agent, availability monitoring
 with collector-outage distinction, LLDP/flow-derived topology edges, approval-gated active
 discovery, maintenance windows, asset metrics table.
+
+## Slice 2 — availability monitoring, collectors, maintenance windows, metrics (2026-10-18)
+
+**Delivered**
+
+- `packages/shared/src/rules/availability.ts`: `classifyCheck` / `deriveOperationalStatus`
+  (maintenance > positive up/down evidence > path loss; silent collector or stale results are
+  `path_loss`, never `down`), `deriveSensorHealth`, `isWindowActive`; tested (8 tests).
+- Schema (`0001_phase1_monitoring`): `monitoring_checks`, `check_results`, `maintenance_windows`,
+  `asset_metrics`; enums `check_kind`, `check_outcome`.
+- `apps/api/src/monitoring/service.ts`: `AvailabilityService.reevaluateAsset` (latest result per
+  check via `DISTINCT ON`, collector heartbeat state, active windows by asset or segment; sets
+  `monitoring_coverage = partial` when checks exist), `runTcpCheck` (connect-only, hard timeout),
+  `MonitoringScheduler` (bounded concurrency, due-check selection, started from `server.ts`,
+  configurable via `MONITORING_*`).
+- Routes: `/api/v1/monitoring/checks` (create requires the target to be a known address of the
+  asset and non-public), `/checks/:id/results` (collector reports; 409 for platform-run checks),
+  `/maintenance-windows` (asset xor segment, ≤ 30 days), `/overview`; `/api/v1/assets/:id/metrics`
+  (ingest ≤ 500 points, read ≤ 7 days / 5 000 points); `/api/v1/sensors` (register — inline mode
+  rejected at registration), `/:id/status`, `/:id/health`, `/:id/heartbeat`.
+- RBAC: `monitoring.read|manage|ingest` (noc_operator holds all three; read for analysts,
+  responders, security/platform admins, auditors).
+- Web: NOC Operations page (status tiles, sensors, active windows, recent results); status column
+  on the inventory. Capability `noc.health_monitoring` → `degraded` (pollers pending).
+
+**Verified**
+
+API: 5 integration tests — RBAC + target rule, real TCP probe online→offline with interval
+gating and `unsupported` for ICMP, collector heartbeat turning the same `down` evidence from
+`unreachable_monitoring_path` into `offline`, maintenance override + overview, bounded metrics.
+Totals: shared 70, API 51, web 4; e2e covers the NOC page.
+
+**Not delivered yet**
+
+SNMPv3 poller, host agent, passive discovery connectors, LLDP/flow topology edges, approval-gated
+active discovery, threshold alerts/escalation (Phase 2 alert queue), retention enforcement jobs.

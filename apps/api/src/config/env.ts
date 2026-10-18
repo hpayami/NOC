@@ -40,7 +40,10 @@ const EnvSchema = z
       .default('info'),
     /** Static bearer token that scrapers may use for /metrics. Optional; JWT with platform.metrics.read also works. */
     METRICS_TOKEN: z.string().min(24).optional(),
-    APP_VERSION: z.string().default('0.1.0-phase0'),
+    MONITORING_SCHEDULER_ENABLED: bool.default(true),
+    MONITORING_TICK_SECONDS: z.coerce.number().int().min(5).max(300).default(15),
+    MONITORING_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(8),
+    APP_VERSION: z.string().default('0.1.0-phase1'),
   })
   .transform((e) => ({ ...e, COOKIE_SECURE: e.COOKIE_SECURE ?? e.NODE_ENV === 'production' }));
 
