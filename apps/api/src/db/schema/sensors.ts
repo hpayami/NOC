@@ -28,6 +28,8 @@ export const sensors = pgTable(
     engineVersion: text('engine_version'),
     ruleSetVersion: text('rule_set_version'),
     enabled: boolean('enabled').notNull().default(false),
+    /** Reported by the sensor's heartbeat; required (with health) before a policy can be enabled. */
+    inlineCapable: boolean('inline_capable').notNull().default(false),
     /** SHA-256 of the sensor's long-lived credential; the credential itself is never stored. */
     credentialHash: text('credential_hash'),
     /** SHA-256 of a single-use enrolment token issued by an operator; cleared on enrolment. */

@@ -7,7 +7,9 @@ import {
   AgentInventory,
   ApiError,
   IngestMetricsRequest,
+  IpsAckRequest,
   NeighborBatch,
+  SensorIpsDirective,
   NeighborBatchResult,
   SensorHeartbeatRequest,
 } from '@noc/shared';
@@ -226,6 +228,59 @@ export function agentRoutes(deps: Deps) {
         ip: c.get('clientIp'),
       });
       return c.json(r, 202);
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: 'get',
+      path: '/ips-directive',
+      tags: ['agents'],
+      middleware: [
+        requireSensor(),
+        rateLimit(limiter, {
+          name: 'agent-ips',
+          capacity: 60,
+          refillPerSecond: 1,
+          keyBy: 'sensor',
+        }),
+      ] as const,
+      security: sensorAuth,
+      responses: {
+        200: {
+          description:
+            'The inline-prevention directive this sensor must run now. Defaults to detect-only; always fail-open.',
+          content: { 'application/json': { schema: SensorIpsDirective } },
+        },
+        401: err('Unauthenticated'),
+      },
+    }),
+    async (c) => c.json(await deps.ips.directiveFor(c.get('sensor')!.sensorId), 200),
+  );
+
+  app.openapi(
+    createRoute({
+      method: 'post',
+      path: '/ips-ack',
+      tags: ['agents'],
+      middleware: [
+        requireSensor(),
+        rateLimit(limiter, {
+          name: 'agent-ips',
+          capacity: 60,
+          refillPerSecond: 1,
+          keyBy: 'sensor',
+        }),
+      ] as const,
+      security: sensorAuth,
+      request: {
+        body: { content: { 'application/json': { schema: IpsAckRequest } }, required: true },
+      },
+      responses: { 204: { description: 'Recorded' }, 401: err('Unauthenticated') },
+    }),
+    async (c) => {
+      await deps.ips.ack(c.get('sensor')!.sensorId, c.req.valid('json'));
+      return c.body(null, 204);
     },
   );
 

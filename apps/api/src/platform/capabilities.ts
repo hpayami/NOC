@@ -106,10 +106,17 @@ export const CAPABILITIES: CapabilityStatus[] = [
       'Endpoint isolation, indicator blocking, session disabling and rule deployment have no integration; such actions can be approved but execution is refused',
   },
   {
+    id: 'nips.policy_plane',
+    state: 'available',
+    phase: 4,
+    reason:
+      'Inline policies: propose → two independent approvals → time-boxed enable by a non-approver on a healthy inline-capable sensor; kill switch; sensor acknowledges applied version',
+  },
+  {
     id: 'nips.inline_prevention',
     state: 'disabled',
     phase: 4,
-    reason: 'Never enabled automatically; requires Linux sensor, approval and rollback plan',
+    reason: 'No inline policy is enabled; sensors run detect-only (fail-open)',
   },
   {
     id: 'assessment.engagements',
@@ -138,6 +145,12 @@ type SensorState = Array<{ enabled: boolean; lastEventAt: Date | null }>;
 export function resolveCapabilities(input: {
   suricataSensors: SensorState;
   zeekSensors?: SensorState;
+  enabledIpsPolicies?: Array<{
+    sensorName: string;
+    mode: string;
+    expiresAt: Date | null;
+    applyState: string;
+  }>;
   now: Date;
 }): CapabilityStatus[] {
   const engines: Record<string, { sensors: SensorState; label: string }> = {
@@ -145,6 +158,21 @@ export function resolveCapabilities(input: {
     'nsm.zeek': { sensors: input.zeekSensors ?? [], label: 'Zeek' },
   };
   return CAPABILITIES.map((cap) => {
+    if (cap.id === 'nips.inline_prevention') {
+      const on = input.enabledIpsPolicies ?? [];
+      if (on.length === 0) return cap;
+      const applied = on.filter((p) => p.applyState === 'applied').length;
+      return {
+        ...cap,
+        state: applied === on.length ? 'available' : 'degraded',
+        reason: `${on.length} inline policy(ies) enabled (${applied} acknowledged by sensors): ${on
+          .map(
+            (p) =>
+              `${p.sensorName}:${p.mode}${p.expiresAt ? ` until ${p.expiresAt.toISOString()}` : ''}`,
+          )
+          .join(', ')}`,
+      };
+    }
     const engine = engines[cap.id];
     if (!engine) return cap;
     const enabled = engine.sensors.filter((s) => s.enabled);

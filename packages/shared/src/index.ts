@@ -29,3 +29,5 @@ export * from './entities/ingest';
 export * from './entities/incidents';
 export * from './entities/retention';
 export * from './entities/response';
+export * from './entities/ips';
+export * from './rules/ips';

@@ -82,10 +82,9 @@ test.describe('Phase 0 shell', () => {
     await page.goto('/soc-alerts');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('دسترسی مجاز نیست');
 
-    // Unimplemented workspace shows real capability state, never sample data.
+    // NIPS needs ips.read, which a platform admin deliberately lacks.
     await page.goto('/nips');
-    await expect(page.getByText('این بخش هنوز عملیاتی نیست')).toBeVisible();
-    await expect(page.getByText('nips.inline_prevention')).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('دسترسی مجاز نیست');
 
     // Logout clears the session; shell redirects to login.
     await page.getByRole('button', { name: 'خروج' }).click();
@@ -145,8 +144,32 @@ test.describe('Phase 0 shell', () => {
     await expect(page.getByTestId('response-status')).toHaveText('تأییدشده');
     await expect(page.getByRole('button', { name: 'اجرا', exact: true })).toHaveCount(0);
     await expect(page.getByText('اقدام پاسخ').first()).toBeVisible();
+    // Unimplemented workspace shows real capability state, never sample data.
+    await page.goto('/threat-intel');
+    await expect(page.getByText('این بخش هنوز عملیاتی نیست')).toBeVisible();
+    await expect(page.getByText('events.pipeline')).toBeVisible();
     // Analysts cannot administer users: forbidden page, not a crash.
     await page.goto('/administration');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('دسترسی مجاز نیست');
+  });
+
+  test('a blue-team engineer sees the NIPS policy plane with inline prevention disabled', async ({
+    page,
+  }) => {
+    const blueEmail = process.env.E2E_BLUE_EMAIL;
+    const bluePassword = process.env.E2E_BLUE_PASSWORD;
+    test.skip(!blueEmail || !bluePassword, 'E2E_BLUE_EMAIL and E2E_BLUE_PASSWORD are required');
+    await page.goto('/login');
+    await page.getByLabel('ایمیل').fill(blueEmail!);
+    await page.getByLabel('گذرواژه').fill(bluePassword!);
+    await page.getByRole('button', { name: 'ورود' }).click();
+    await expect(page).toHaveURL(/\/command-center$/);
+    await page.goto('/nips');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('سیاست‌های NIPS');
+    // Honest state: nothing is inline, and the reason says sensors run detect-only.
+    await expect(page.getByTestId('nips-reason')).toContainText('detect-only');
+    await expect(page.getByText('هیچ سیاست پیشگیری درون‌خطی پیشنهاد نشده است.')).toBeVisible();
+    // No Suricata sensor is registered, so no proposal form is offered — nothing to switch on.
+    await expect(page.getByText('سنسور Suricata ثبت نشده است')).toBeVisible();
   });
 });

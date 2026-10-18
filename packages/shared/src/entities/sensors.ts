@@ -13,6 +13,8 @@ export const Sensor = z.strictObject({
   engineVersion: z.string().max(64).nullable(),
   ruleSetVersion: z.string().max(128).nullable(),
   enabled: z.boolean(),
+  /** Reported by the sensor itself; never assumed. */
+  inlineCapable: z.boolean(),
   registeredAt: Timestamp,
   lastHeartbeatAt: Timestamp.nullable(),
 });

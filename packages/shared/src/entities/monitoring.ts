@@ -130,6 +130,8 @@ export const SensorHeartbeatRequest = z.strictObject({
   detail: z.string().max(512).nullable().default(null),
   engineVersion: z.string().max(64).nullable().default(null),
   ruleSetVersion: z.string().max(128).nullable().default(null),
+  /** True only when the engine runs with an inline-capable capture (e.g. AF_PACKET copy-mode/NFQUEUE). */
+  inlineCapable: z.boolean().default(false),
 });
 export type SensorHeartbeatRequest = z.infer<typeof SensorHeartbeatRequest>;
 

@@ -127,6 +127,16 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   verified integration exists — `GET /executors` reports exactly that. See
   `docs/phase3-progress.md`.
 
+## Phase 4 progress (NIPS policy plane)
+
+- `/api/v1/ips/policies`: inline-prevention policies as proposals — two independent approvals,
+  enable only by a non-approver on a healthy, heartbeating, inline-capable Suricata sensor, with
+  a 1–72 h TTL and a rollback plan; kill switch for either side of the approval split. Protected
+  ranges must be private; rules must be validated. Expiry returns the sensor to detect-only.
+- Sensors fetch `GET /api/v1/agents/ips-directive` (fail-open by contract) and acknowledge the
+  applied version; `nips.inline_prevention` is reported from enabled **and acknowledged**
+  policies only. Web **NIPS Policies** page. See `docs/phase4-progress.md`.
+
 ## What Phase 0 provides
 
 - **Shared contracts** for every domain entity (users, assets, observations, segments, topology,
@@ -164,7 +174,7 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
 
 ## Roadmap
 
-Phase 1 asset inventory & NOC → Phase 2 NIDS & event pipeline → Phase 3 SOC & IR (in progress) → Phase 4 NIPS &
+Phase 1 asset inventory & NOC → Phase 2 NIDS & event pipeline → Phase 3 SOC & IR → Phase 4 NIPS (policy plane delivered) &
 controlled response → Phase 5 authorized assessment → Phase 6 analytics → Phase 7 enterprise
 readiness. Details: `docs/phase-1-plan.md`, `docs/architecture.md`.
 

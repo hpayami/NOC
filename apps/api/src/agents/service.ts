@@ -148,6 +148,7 @@ export class AgentService {
         .set({
           lastHeartbeatAt: now,
           engineVersion: body.engineVersion ?? sql`${sensors.engineVersion}`,
+          inlineCapable: body.inlineCapable,
         })
         .where(eq(sensors.id, sensor.sensorId));
     });

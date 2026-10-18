@@ -38,6 +38,7 @@ export const toSensor = (s: typeof sensors.$inferSelect) =>
     engineVersion: s.engineVersion,
     ruleSetVersion: s.ruleSetVersion,
     enabled: s.enabled,
+    inlineCapable: s.inlineCapable,
     registeredAt: s.registeredAt.toISOString(),
     lastHeartbeatAt: s.lastHeartbeatAt?.toISOString() ?? null,
   });

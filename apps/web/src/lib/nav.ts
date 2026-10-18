@@ -49,10 +49,10 @@ export const NAV: NavItem[] = [
   {
     slug: 'nips',
     label: 'nav.nips',
-    capabilities: ['nips.inline_prevention'],
+    capabilities: ['nips.inline_prevention', 'nips.policy_plane'],
     permission: 'ips.read',
     phase: 4,
-    implemented: false,
+    implemented: true,
   },
   {
     slug: 'noc',

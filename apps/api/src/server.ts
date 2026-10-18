@@ -9,6 +9,7 @@ import { AlertBus } from './events/bus';
 import { AvailabilityService, MonitoringScheduler } from './monitoring/service';
 import { createMetrics } from './platform/metrics';
 import { syncRbacCatalog } from './platform/seed';
+import { IpsService } from './ips/service';
 import { RetentionScheduler, RetentionService } from './retention/service';
 import { TokenService } from './security/tokens';
 
@@ -45,6 +46,7 @@ async function main() {
     metrics: createMetrics(),
     bus: new AlertBus(),
     retention,
+    ips: new IpsService(handle.db, audit),
   };
   const app = createApp(deps);
 

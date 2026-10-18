@@ -7,6 +7,7 @@ import { loadEnv, type Env } from '../src/config/env';
 import { createDb, type DbHandle } from '../src/db/client';
 import { RateLimiter } from '../src/middleware/rate-limit';
 import { createMetrics } from '../src/platform/metrics';
+import { IpsService } from '../src/ips/service';
 import { RetentionService } from '../src/retention/service';
 import { syncRbacCatalog } from '../src/platform/seed';
 import { TokenService } from '../src/security/tokens';
@@ -60,13 +61,14 @@ export async function createHarness(
     metrics: createMetrics(),
     bus: new AlertBus(),
     retention: new RetentionService(handle.db, audit, { batchSize: 2, maxBatchesPerDataset: 3 }),
+    ips: new IpsService(handle.db, audit),
   });
   return { app, handle, env, limiter, close: () => handle.close() };
 }
 
 export async function resetDatabase(handle: DbHandle): Promise<void> {
   await handle.db.execute(
-    sql`truncate table users, refresh_tokens, audit_events, assets, sensors, alerts, incidents, retention_policies, response_actions, approvals restart identity cascade`,
+    sql`truncate table users, refresh_tokens, audit_events, assets, sensors, alerts, incidents, retention_policies, response_actions, approvals, ips_policies restart identity cascade`,
   );
 }
 
