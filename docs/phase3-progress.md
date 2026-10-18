@@ -42,12 +42,11 @@
 
 API: 5 integration tests — create from alerts (escalation, one-owner rule, detach/attach,
 audit actions), full standard flow with denied/required-reason/reopen cases and timeline
-deviation count, notes/assignment/severity/filters/pagination; retention defaults + audit floor
-
-- read/modify separation, purge keeping incident evidence, legal hold, bounded batches
-  (harness uses batch size 2 × 3). Totals: shared 90, API 77, web 4, pytest 4; e2e 3/3 — the
-  analyst flow now creates an incident through the UI, adds a note, moves it to triage and
-  confirms no close button is offered.
+deviation count, notes/assignment/severity/filters/pagination; retention defaults, audit floor
+and read/modify separation, purge keeping incident evidence, legal hold, bounded batches
+(harness uses batch size 2 × 3). Totals: shared 90, API 77, web 4, pytest 4; e2e 3/3 — the
+analyst flow now creates an incident through the UI, adds a note, moves it to triage and
+confirms no close button is offered.
 
 **Not delivered yet**
 
