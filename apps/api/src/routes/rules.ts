@@ -5,7 +5,10 @@ import {
   ApiError,
   CoverageQuery,
   CreateDetectionValidationRequest,
+  CreateValidationScheduleRequest,
   DetectionValidation,
+  UpdateValidationScheduleRequest,
+  ValidationSchedule,
   ValidationListQuery,
   DetectionCoverage,
   DetectionRuleDetail,
@@ -290,6 +293,108 @@ export function ruleRoutes(deps: Deps) {
         ip: c.get('clientIp'),
       };
       return c.json(await validations.create(c.req.valid('json'), actor), 201);
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: 'get',
+      path: '/validation-schedules',
+      tags: ['detection-rules'],
+      middleware: [requirePermission('detection_rules.read')] as const,
+      security: [{ bearerAuth: [] }],
+      responses: {
+        200: {
+          description:
+            'Standing validation schedules with their last verdict, inside the caller site scope',
+          content: {
+            'application/json': { schema: z.object({ items: z.array(ValidationSchedule) }) },
+          },
+        },
+        ...common,
+      },
+    }),
+    async (c) =>
+      c.json(
+        {
+          items: await validations.listSchedules(
+            sensorSiteCondition(siteScope(c.get('principal'))),
+          ),
+        },
+        200,
+      ),
+  );
+
+  app.openapi(
+    createRoute({
+      method: 'post',
+      path: '/validation-schedules',
+      tags: ['detection-rules'],
+      middleware: [requirePermission('detection_rules.change')] as const,
+      security: [{ bearerAuth: [] }],
+      request: {
+        body: {
+          content: { 'application/json': { schema: CreateValidationScheduleRequest } },
+          required: true,
+        },
+      },
+      responses: {
+        201: {
+          description: 'Schedule created (first validation queued now)',
+          content: { 'application/json': { schema: ValidationSchedule } },
+        },
+        404: err('Rule or sensor not found'),
+        409: err('Rule not deployed to that sensor, sensor not Suricata or disabled'),
+        ...common,
+      },
+    }),
+    async (c) => {
+      const p = c.get('principal')!;
+      const actor = {
+        userId: p.userId,
+        label: p.email,
+        requestId: c.get('requestId'),
+        ip: c.get('clientIp'),
+      };
+      return c.json(await validations.createSchedule(c.req.valid('json'), actor), 201);
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: 'patch',
+      path: '/validation-schedules/{id}',
+      tags: ['detection-rules'],
+      middleware: [requirePermission('detection_rules.change')] as const,
+      security: [{ bearerAuth: [] }],
+      request: {
+        params: z.object({ id: z.uuid() }),
+        body: {
+          content: { 'application/json': { schema: UpdateValidationScheduleRequest } },
+          required: true,
+        },
+      },
+      responses: {
+        200: {
+          description: 'Updated',
+          content: { 'application/json': { schema: ValidationSchedule } },
+        },
+        404: err('Not found'),
+        ...common,
+      },
+    }),
+    async (c) => {
+      const p = c.get('principal')!;
+      const actor = {
+        userId: p.userId,
+        label: p.email,
+        requestId: c.get('requestId'),
+        ip: c.get('clientIp'),
+      };
+      return c.json(
+        await validations.updateSchedule(c.req.valid('param').id, c.req.valid('json'), actor),
+        200,
+      );
     },
   );
 

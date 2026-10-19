@@ -32,6 +32,7 @@ import type { MlService } from '../ml/service';
 import { sendMail, type MailOptions, type MailResult } from './smtp';
 import { RuleService } from '../rules/service';
 import { VulnerabilityService } from '../vulnerabilities/service';
+import { ValidationService } from '../rules/validation';
 
 export interface Actor {
   userId: string;
@@ -150,6 +151,7 @@ export class OperationsService {
       .from(responseActions)
       .where(eq(responseActions.status, 'pending_approval'));
     const uncatalogued = await new VulnerabilityService(this.db, this.audit).uncatalogued(20);
+    const validations = await new ValidationService(this.db, this.audit).conditionInput(now);
     const [assetCounts] = await this.db
       .select({
         total: count(),
@@ -168,6 +170,7 @@ export class OperationsService {
           responseActions: ra?.n ?? 0,
         },
         uncataloguedCves: uncatalogued,
+        validations,
         assets: {
           total: assetCounts?.total ?? 0,
           unmonitored: Number(assetCounts?.unmonitored ?? 0),

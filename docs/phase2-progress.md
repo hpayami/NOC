@@ -245,3 +245,44 @@ Validation proves that a signature fires on a sample, not that it fires on live 
 samples are provisioned on the sensor out of band (the platform never stores packet captures);
 Zeek scripts are not validated; a rule proven on one sensor is "proven" for coverage even if
 another sensor of the same engine never ran the sample.
+
+## Slice 6 — Scheduled validation and the validation-failure condition (2026-10-19)
+
+**Delivered**
+
+- **Schedules** (`validation_schedules`, migration `0023_phase2_validation_schedules`): one per
+  (rule, sensor) — sample name, interval 1–30 days, enabled flag, note, who created it, when
+  it last queued, and the last admission error. Creating a schedule applies the same admission
+  as a one-off validation and queues the first run immediately.
+- **Scheduler** (`ValidationScheduler`, `VALIDATION_SCHEDULER_ENABLED`,
+  `VALIDATION_SCHEDULER_INTERVAL_SECONDS` default 300): per enabled schedule, queue a
+  validation on behalf of the creator when the last **pass** is older than the interval (or
+  there never was one), never while one is queued or dispatched, and never within the interval
+  of a failed or inconclusive attempt — a broken sample does not queue a validation every tick.
+  Admission refusals (rule no longer deployed, sensor disabled, rule not in that sensor's
+  bundle) are written to the schedule as `lastError`, not retried in a loop.
+- **Condition** `detection_validation_failures` (warning, `/blue-team`): deployed rules whose
+  latest completed validation failed within the freshness window, plus enabled schedules the
+  scheduler could not queue — so a rule that stopped firing reaches operators through the
+  existing webhook and e-mail channels.
+- API: `GET/POST /api/v1/detection-rules/validation-schedules`, `PATCH …/{id}`
+  (read / change). Web: schedules table with last verdict, last queued, error and an
+  enable/disable control, plus a schedule form on the blue-team workspace.
+
+**Verified**
+
+Shared: the new check appears in every evaluation; failed rules and stuck schedules are named
+in one warning. API (1 new, 2 in file): analyst 403; schedule created with the first
+validation queued and the scheduler skipping while it is pending; after a pass the schedule is
+not due until the interval elapses, then queues once; after a failure the next attempt waits
+for the interval, the schedule shows the failed verdict and the platform condition names the
+rule; a disabled sensor becomes a schedule error visible in the condition; disabling the
+schedule clears it; 404 on unknown ids; the scheduler's validations are audited as
+`system:validation-scheduler`. Totals: shared 138, API 115 (30 files), web 5, pytest 8 +
+agent 10; e2e 5/5.
+
+**Known limitations**
+
+The scheduler runs on every API instance unless disabled on all but one (a race could queue
+one duplicate per schedule, which the pending check then absorbs); schedules are per sensor,
+not per site; no notification when a schedule is disabled by an operator.

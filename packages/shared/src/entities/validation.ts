@@ -81,3 +81,40 @@ export const ValidationResultRequest = z.strictObject({
   durationMs: z.number().int().nonnegative().nullable(),
 });
 export type ValidationResultRequest = z.infer<typeof ValidationResultRequest>;
+
+/** Re-prove a rule on a sensor every N days; the scheduler queues a validation when the last pass is older. */
+export const ValidationSchedule = z.strictObject({
+  id: Id,
+  ruleId: Id,
+  ruleName: ShortText,
+  ruleExternalId: z.string().max(64),
+  sensorId: Id,
+  sensorName: ShortText,
+  sampleRef: SampleRef,
+  intervalDays: z.number().int().min(1).max(30),
+  enabled: z.boolean(),
+  note: z.string().max(1024).nullable(),
+  createdBy: Id,
+  createdAt: Timestamp,
+  lastQueuedAt: Timestamp.nullable(),
+  /** Why the scheduler could not queue last time (rule no longer deployed, sensor disabled…). */
+  lastError: z.string().max(512).nullable(),
+  /** Most recent completed verdict for this rule/sensor pair, with its time; null when none. */
+  lastVerdict: ValidationVerdict.nullable(),
+  lastVerdictAt: Timestamp.nullable(),
+});
+export type ValidationSchedule = z.infer<typeof ValidationSchedule>;
+
+export const CreateValidationScheduleRequest = z.strictObject({
+  ruleId: Id,
+  sensorId: Id,
+  sampleRef: SampleRef,
+  intervalDays: z.number().int().min(1).max(30).default(7),
+  note: z.string().trim().max(1024).nullable().default(null),
+});
+export type CreateValidationScheduleRequest = z.infer<typeof CreateValidationScheduleRequest>;
+
+export const UpdateValidationScheduleRequest = z.strictObject({
+  enabled: z.boolean().optional(),
+  intervalDays: z.number().int().min(1).max(30).optional(),
+});

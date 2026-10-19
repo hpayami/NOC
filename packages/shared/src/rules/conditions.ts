@@ -22,6 +22,8 @@ export interface ConditionInput {
   pending: { ipsPolicies: number; engagements: number; responseActions: number };
   uncataloguedCves: readonly string[];
   assets: { total: number; unmonitored: number };
+  /** Deployed rules whose latest validation failed, and schedules the scheduler could not queue. */
+  validations?: { failedRules: readonly string[]; scheduleErrors: readonly string[] };
 }
 
 export const IPS_EXPIRY_WARNING_HOURS = 2;
@@ -187,6 +189,22 @@ export function evaluateConditions(
         }
       : null,
     'every referenced CVE is catalogued',
+  );
+  const v = input.validations ?? { failedRules: [], scheduleErrors: [] };
+  const failing = v.failedRules.length + v.scheduleErrors.length;
+  check(
+    'detection_validation_failures',
+    failing
+      ? {
+          id: 'detection_validation_failures',
+          severity: 'warning',
+          title: 'Detection validation failing',
+          detail: `${v.failedRules.length} deployed rule(s) did not fire on their sample: ${list(v.failedRules)}${v.scheduleErrors.length ? `; ${v.scheduleErrors.length} schedule(s) could not queue: ${list(v.scheduleErrors)}` : ''}`,
+          count: failing,
+          link: '/blue-team',
+        }
+      : null,
+    'no failed validation or stuck schedule',
   );
   const ratio = input.assets.total ? input.assets.unmonitored / input.assets.total : 0;
   check(

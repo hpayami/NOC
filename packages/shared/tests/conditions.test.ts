@@ -30,6 +30,7 @@ describe('evaluateConditions', () => {
         'approvals_pending',
         'assets_unmonitored',
         'cves_uncatalogued',
+        'detection_validation_failures',
         'ips_auto_disabled',
         'ips_policies_expiring',
         'rule_bundles_out_of_sync',
@@ -177,5 +178,26 @@ describe('evaluateConditions', () => {
     expect(conditionFingerprint(base)).not.toBe(
       conditionFingerprint({ ...base, severity: 'warning' }),
     );
+  });
+});
+
+describe('detection validation condition', () => {
+  it('raises a warning for failed validations and stuck schedules, naming them', () => {
+    const r = evaluateConditions(
+      {
+        ...quiet,
+        validations: {
+          failedRules: ['1:9000001 CUSTOM C2'],
+          scheduleErrors: ['ids-edge-1: sensor disabled'],
+        },
+      },
+      now,
+    );
+    expect(r.conditions.map((c) => [c.id, c.severity, c.count])).toEqual([
+      ['detection_validation_failures', 'warning', 2],
+    ]);
+    expect(r.conditions[0]!.detail).toContain('1:9000001 CUSTOM C2');
+    expect(r.conditions[0]!.detail).toContain('ids-edge-1: sensor disabled');
+    expect(r.conditions[0]!.link).toBe('/blue-team');
   });
 });

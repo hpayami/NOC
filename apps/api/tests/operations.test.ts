@@ -213,6 +213,7 @@ describe('platform conditions and notifications', () => {
         'approvals_pending',
         'assets_unmonitored',
         'cves_uncatalogued',
+        'detection_validation_failures',
         'ips_auto_disabled',
         'ips_policies_expiring',
         'rule_bundles_out_of_sync',

@@ -1,4 +1,13 @@
-import { index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { detectionRules } from './secops';
 import { sensors } from './sensors';
 import { users } from './identity';
@@ -40,5 +49,34 @@ export const detectionValidations = pgTable(
   (t) => [
     index('detection_validations_sensor_status_idx').on(t.sensorId, t.status),
     index('detection_validations_rule_created_idx').on(t.ruleId, t.createdAt),
+  ],
+);
+
+/** Standing request to re-prove a rule on a sensor every N days. */
+export const validationSchedules = pgTable(
+  'validation_schedules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ruleId: uuid('rule_id')
+      .notNull()
+      .references(() => detectionRules.id, { onDelete: 'cascade' }),
+    sensorId: uuid('sensor_id')
+      .notNull()
+      .references(() => sensors.id, { onDelete: 'cascade' }),
+    sampleRef: text('sample_ref').notNull(),
+    intervalDays: integer('interval_days').notNull().default(7),
+    enabled: boolean('enabled').notNull().default(true),
+    note: text('note'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    updatedAt: ts('updated_at').notNull().defaultNow(),
+    lastQueuedAt: ts('last_queued_at'),
+    lastError: text('last_error'),
+  },
+  (t) => [
+    uniqueIndex('validation_schedules_pair_idx').on(t.ruleId, t.sensorId),
+    index('validation_schedules_enabled_idx').on(t.enabled),
   ],
 );

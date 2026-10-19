@@ -72,6 +72,8 @@ const EnvSchema = z
     NOTIFICATIONS_ENABLED: bool.default(true),
     NOTIFICATIONS_INTERVAL_SECONDS: z.coerce.number().int().min(30).max(3600).default(120),
     NOTIFICATIONS_REMIND_HOURS: z.coerce.number().int().min(1).max(168).default(6),
+    VALIDATION_SCHEDULER_ENABLED: bool.default(true),
+    VALIDATION_SCHEDULER_INTERVAL_SECONDS: z.coerce.number().int().min(60).max(86_400).default(300),
     RETENTION_ENABLED: bool.default(true),
     RETENTION_INTERVAL_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
     APP_VERSION: z.string().default('0.1.0-phase1'),

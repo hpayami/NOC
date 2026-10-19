@@ -213,6 +213,9 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   which signatures fired and the platform derives passed / failed / inconclusive (wrong bundle,
   sensor error). No packet is sent, the sample never leaves the sensor, and a fresh pass on a
   sensor currently running that bundle marks the rule **proven** in coverage.
+- Scheduled validation re-proves a rule on a sensor every N days and backs off after failures;
+  a rule that stops firing is raised as the `detection_validation_failures` platform condition
+  and reaches operators through webhook and e-mail channels.
 - `GET /api/v1/detection-rules/coverage?days=30` scores every ATT&CK technique in the catalogue:
   covered only when a deployed rule is acknowledged by a running sensor; otherwise deployed but
   unacknowledged, rule not deployed, or uncovered. Observations (engine-tagged events), open

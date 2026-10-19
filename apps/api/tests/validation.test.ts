@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { DetectionCoverage, DetectionValidation } from '@noc/shared';
+import {
+  DetectionCoverage,
+  DetectionValidation,
+  PlatformConditions,
+  ValidationSchedule,
+} from '@noc/shared';
 import {
   authed,
   createHarness,
@@ -12,6 +17,8 @@ import {
   seedAdmin,
   type Harness,
 } from './helpers';
+import { ValidationService } from '../src/rules/validation';
+import { AuditService } from '../src/audit/service';
 
 let h: Harness;
 let admin: { token: string };
@@ -353,5 +360,163 @@ describe('detection validation', () => {
       acts.filter((a) => a.action === 'detection_rules.validate' && a.outcome === 'denied').length,
     ).toBeGreaterThanOrEqual(2);
     expect(acts.filter((a) => a.action === 'detection_rules.validation_result')).toHaveLength(4);
+  });
+
+  it('re-proves rules on a schedule, backs off after failures, and surfaces failures as a platform condition', async () => {
+    const s = await enrol('ids-edge-1');
+    await post('/api/v1/detection-rules/import', blue, {
+      source: 'custom',
+      ruleSet: 'c2',
+      license: 'MIT',
+      content:
+        'alert tcp $HOME_NET any -> $EXTERNAL_NET 4444 (msg:"CUSTOM C2"; sid:9000001; rev:1; classtype:trojan-activity;)\n',
+    });
+    const rule = (await jsonOf(await get('/api/v1/detection-rules?q=9000001', blue))).items[0] as {
+      id: string;
+    };
+    await post(`/api/v1/detection-rules/${rule.id}/validate`, blue);
+    await post(`/api/v1/detection-rules/${rule.id}/deploy`, sec);
+    const svc = new ValidationService(h.handle.db, new AuditService(h.handle.db));
+    const body = { ruleId: rule.id, sensorId: s.id, sampleRef: 'c2-beacon.pcap', intervalDays: 7 };
+
+    expect((await post('/api/v1/detection-rules/validation-schedules', analyst, body)).status).toBe(
+      403,
+    );
+    const created = await post('/api/v1/detection-rules/validation-schedules', blue, body);
+    expect(created.status).toBe(201);
+    const sched = ValidationSchedule.parse(await jsonOf(created));
+    expect(sched).toMatchObject({
+      intervalDays: 7,
+      enabled: true,
+      lastError: null,
+      lastVerdict: null,
+      sensorName: 'ids-edge-1',
+    });
+    expect(sched.lastQueuedAt).not.toBeNull();
+    // Creating queued the first validation; the scheduler must not queue a second while it is pending.
+    let list = (await jsonOf(await get('/api/v1/detection-rules/validations', blue)))
+      .items as DetectionValidation[];
+    expect(list).toHaveLength(1);
+    expect(await svc.runSchedules()).toEqual({ queued: 0, skipped: 1, errors: 0 });
+
+    // Sensor passes it with the right bundle → not due again until the interval elapses.
+    const bundle = await jsonOf(
+      await h.app.request('/api/v1/agents/rules-bundle', { headers: asSensor(s.cred) }),
+    );
+    const take = async () =>
+      (
+        await jsonOf(
+          await h.app.request('/api/v1/agents/validations', { headers: asSensor(s.cred) }),
+        )
+      ).items as Array<{ id: string }>;
+    const report = (id: string, fired: number[]) =>
+      h.app.request(`/api/v1/agents/validations/${id}/result`, {
+        method: 'POST',
+        headers: asSensor(s.cred),
+        body: JSON.stringify({
+          firedSids: fired,
+          rulesBundleSha256: bundle.bundleSha256,
+          engineVersion: '7.0.6',
+          error: null,
+          durationMs: 5,
+        }),
+      });
+    const [q1] = await take();
+    await report(q1!.id, [9000001]);
+    expect(await svc.runSchedules()).toEqual({ queued: 0, skipped: 1, errors: 0 });
+    expect(await svc.runSchedules(new Date(Date.now() + 8 * 86_400_000))).toEqual({
+      queued: 1,
+      skipped: 0,
+      errors: 0,
+    });
+    list = (await jsonOf(await get('/api/v1/detection-rules/validations', blue)))
+      .items as DetectionValidation[];
+    expect(list).toHaveLength(2);
+    expect(list[0]).toMatchObject({ status: 'queued', sampleRef: 'c2-beacon.pcap' });
+
+    // A failed outcome is a condition and is not re-queued every tick: the interval applies to attempts too.
+    const [q2] = await take();
+    await report(q2!.id, [2100498]);
+    const schedules = (
+      await jsonOf(await get('/api/v1/detection-rules/validation-schedules', analyst))
+    ).items as ValidationSchedule[];
+    expect(schedules[0]).toMatchObject({ id: sched.id, lastVerdict: 'failed' });
+    expect(await svc.runSchedules(new Date(Date.now() + 1 * 86_400_000))).toEqual({
+      queued: 0,
+      skipped: 1,
+      errors: 0,
+    });
+    expect(await svc.runSchedules(new Date(Date.now() + 8 * 86_400_000))).toEqual({
+      queued: 1,
+      skipped: 0,
+      errors: 0,
+    });
+    const cond = PlatformConditions.parse(
+      await jsonOf(await get('/api/v1/operations/conditions', blue)),
+    );
+    const dv = cond.conditions.find((c) => c.id === 'detection_validation_failures');
+    expect(dv).toMatchObject({ severity: 'warning', count: 1, link: '/blue-team' });
+    expect(dv!.detail).toContain('1:9000001 CUSTOM C2');
+
+    // Admission refusals land on the schedule and in the condition; disabling the schedule silences it.
+    const [q3] = await take();
+    await report(q3!.id, [9000001]);
+    await h.handle.db.execute(sql`update sensors set enabled = false where id = ${s.id}`);
+    expect(await svc.runSchedules(new Date(Date.now() + 40 * 86_400_000))).toEqual({
+      queued: 0,
+      skipped: 0,
+      errors: 1,
+    });
+    const stuck = (await jsonOf(await get('/api/v1/detection-rules/validation-schedules', blue)))
+      .items as ValidationSchedule[];
+    expect(stuck[0]!.lastError).toContain('Sensor is disabled');
+    const cond2 = PlatformConditions.parse(
+      await jsonOf(await get('/api/v1/operations/conditions', blue)),
+    );
+    expect(
+      cond2.conditions.find((c) => c.id === 'detection_validation_failures')?.detail,
+    ).toContain('ids-edge-1: Sensor is disabled');
+    expect(
+      (
+        await h.app.request(`/api/v1/detection-rules/validation-schedules/${sched.id}`, {
+          method: 'PATCH',
+          headers: authed(analyst),
+          body: JSON.stringify({ enabled: false }),
+        })
+      ).status,
+    ).toBe(403);
+    const off = await h.app.request(`/api/v1/detection-rules/validation-schedules/${sched.id}`, {
+      method: 'PATCH',
+      headers: authed(blue),
+      body: JSON.stringify({ enabled: false, intervalDays: 3 }),
+    });
+    expect(off.status).toBe(200);
+    expect(ValidationSchedule.parse(await jsonOf(off))).toMatchObject({
+      enabled: false,
+      intervalDays: 3,
+    });
+    expect(await svc.runSchedules(new Date(Date.now() + 40 * 86_400_000))).toEqual({
+      queued: 0,
+      skipped: 0,
+      errors: 0,
+    });
+    const cond3 = PlatformConditions.parse(
+      await jsonOf(await get('/api/v1/operations/conditions', blue)),
+    );
+    expect(cond3.conditions.find((c) => c.id === 'detection_validation_failures')).toBeUndefined();
+    expect(
+      (
+        await h.app.request(
+          '/api/v1/detection-rules/validation-schedules/00000000-0000-4000-8000-000000000000',
+          { method: 'PATCH', headers: authed(blue), body: JSON.stringify({ enabled: true }) },
+        )
+      ).status,
+    ).toBe(404);
+
+    const audit = await jsonOf(await get('/api/v1/audit?limit=100', admin.token));
+    const acts = (audit.items as Array<{ action: string; actorLabel?: string }>).filter(
+      (a) => a.action === 'detection_rules.validate',
+    );
+    expect(acts.some((a) => a.actorLabel === 'system:validation-scheduler')).toBe(true);
   });
 });

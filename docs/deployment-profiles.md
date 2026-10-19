@@ -54,6 +54,9 @@ Never report "zero packet loss" or "complete visibility" without counters from t
   Keep `IPS_WATCHDOG_ENABLED=true` on at least one instance: it is the only path that returns a
   **silent** inline sensor to detect-only (degraded heartbeats are handled in-request on any
   instance).
+- The validation scheduler (`VALIDATION_SCHEDULER_ENABLED`, every
+  `VALIDATION_SCHEDULER_INTERVAL_SECONDS`) is idempotent per schedule but should run on one
+  instance to avoid queuing a duplicate when two ticks race.
 - The condition notifier (`NOTIFICATIONS_ENABLED`, default on, every
   `NOTIFICATIONS_INTERVAL_SECONDS`) keeps its sent/resolved state in PostgreSQL per channel and
   condition, so running it on several instances is safe but can send one duplicate per change

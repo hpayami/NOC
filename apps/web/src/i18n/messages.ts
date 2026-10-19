@@ -779,6 +779,15 @@ const fa = {
   'ops.recipients': 'گیرندگان (با کاما جدا کنید)',
   'ops.email_hint':
     'هر رویداد شرط یک ایمیل متنی ساده می‌فرستد. گواهی TLS هرگز نادیده گرفته نمی‌شود و اعتبارنامه روی اتصال بدون TLS ارسال نمی‌شود. گذرواژه فقط هنگام ساخت پذیرفته می‌شود و هرگز بازگردانده نمی‌شود.',
+  'bt.schedules': 'اعتبارسنجی زمان‌بندی‌شده',
+  'bt.schedules_hint':
+    'هر قاعدهٔ مستقر هر N روز دوباره روی همان سنسور اثبات می‌شود تا «اثبات‌شده» پیش از انقضای ۳۰ روزه از دست نرود. پس از شکست یا نتیجهٔ نامشخص، تلاش بعدی تا پایان بازه عقب می‌افتد و شکست به‌عنوان شرط پلتفرم اعلام می‌شود.',
+  'bt.no_schedules': 'زمان‌بندی‌ای تعریف نشده است.',
+  'bt.schedule': 'زمان‌بندی اعتبارسنجی',
+  'bt.scheduled': 'زمان‌بندی شد (اولین اجرا در صف)',
+  'bt.interval_days': 'بازه (روز)',
+  'bt.last_verdict': 'آخرین حکم',
+  'bt.last_queued': 'آخرین صف',
   'footer.notice': 'این سامانه فقط دارایی‌های دارای مجوز صریح را پایش و ارزیابی می‌کند.',
 } as const;
 
@@ -1559,6 +1568,15 @@ const en: Record<MessageKey, string> = {
   'ops.recipients': 'Recipients (comma-separated)',
   'ops.email_hint':
     'Each condition event sends one plain-text e-mail. TLS certificates are never ignored and credentials are never sent over a connection without TLS. The password is accepted at creation only and never returned.',
+  'bt.schedules': 'Scheduled validation',
+  'bt.schedules_hint':
+    'Each deployed rule is re-proven on the same sensor every N days so "proven" never lapses past the 30-day freshness. After a failure or an inconclusive result the next attempt waits for the interval, and the failure is raised as a platform condition.',
+  'bt.no_schedules': 'No schedule defined.',
+  'bt.schedule': 'Schedule validation',
+  'bt.scheduled': 'Scheduled (first run queued)',
+  'bt.interval_days': 'Interval (days)',
+  'bt.last_verdict': 'Last verdict',
+  'bt.last_queued': 'Last queued',
   'footer.notice': 'This platform monitors and assesses explicitly authorized assets only.',
 };
 

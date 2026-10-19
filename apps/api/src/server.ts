@@ -16,6 +16,7 @@ import { IpsService, IpsWatchdog } from './ips/service';
 import { MlService } from './ml/service';
 import { NotificationScheduler, OperationsService } from './operations/service';
 import { ThreatIntelService } from './threat-intel/service';
+import { ValidationScheduler, ValidationService } from './rules/validation';
 import { RetentionScheduler, RetentionService } from './retention/service';
 import { TokenService } from './security/tokens';
 
@@ -90,6 +91,11 @@ async function main() {
     logger,
   });
   if (env.NOTIFICATIONS_ENABLED) notifications.start();
+  const validationScheduler = new ValidationScheduler(new ValidationService(handle.db, audit), {
+    intervalSeconds: env.VALIDATION_SCHEDULER_INTERVAL_SECONDS,
+    logger,
+  });
+  if (env.VALIDATION_SCHEDULER_ENABLED) validationScheduler.start();
 
   const server = serve({ fetch: app.fetch, hostname: env.API_HOST, port: env.API_PORT }, (info) => {
     logger.info({ host: info.address, port: info.port, env: env.NODE_ENV }, 'noc-api listening');
@@ -98,6 +104,7 @@ async function main() {
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'shutting down');
     scheduler.stop();
+    validationScheduler.stop();
     retentionScheduler.stop();
     ipsWatchdog.stop();
     notifications.stop();

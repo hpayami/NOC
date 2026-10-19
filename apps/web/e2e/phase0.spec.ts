@@ -203,6 +203,7 @@ test.describe('Phase 0 shell', () => {
     await expect(page.getByTestId('bt-validate')).toContainText(
       'قاعدهٔ مستقری برای اعتبارسنجی وجود ندارد.',
     );
+    await expect(page.getByTestId('bt-no-schedules')).toBeVisible();
     // ML analytics: advisory banner, service state reported, no fabricated scores.
     await page.goto('/ml-analytics');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('تحلیل ML (مشورتی)');

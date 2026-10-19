@@ -4,6 +4,7 @@ import {
   DetectionRuleDetail,
   DetectionValidation,
   RuleDeploymentState,
+  ValidationSchedule,
   type CoverageStatus,
   type DetectionValidationStatus,
   type ValidationVerdict,
@@ -12,11 +13,12 @@ import { getI18n } from '@/i18n/server';
 import { apiFetch } from '@/lib/api';
 import { getSessionUser } from '@/lib/session';
 import type { MessageKey } from '@/i18n/messages';
-import { ValidateForm } from './validate-form';
+import { ScheduleToggle, ValidateForm } from './validate-form';
 
 export const dynamic = 'force-dynamic';
 const PERIODS = [7, 30, 90] as const;
 const Validations = z.object({ items: z.array(DetectionValidation) });
+const Schedules = z.object({ items: z.array(ValidationSchedule) });
 const Rules = z.object({ items: z.array(DetectionRuleDetail), nextCursor: z.string().nullable() });
 const Deployment = z.object({ items: z.array(RuleDeploymentState) });
 const VERDICT_LABEL: Record<ValidationVerdict, MessageKey> = {
@@ -60,9 +62,10 @@ export default async function BlueTeamPage({
   const gapsOnly = sp.view === 'gaps';
   const me = await getSessionUser();
   const canChange = me?.permissions.includes('detection_rules.change') ?? false;
-  const [c, validations, deployedRules, deployment] = await Promise.all([
+  const [c, validations, schedules, deployedRules, deployment] = await Promise.all([
     apiFetch(`/api/v1/detection-rules/coverage?days=${days}`, DetectionCoverage),
     apiFetch('/api/v1/detection-rules/validations?limit=50', Validations),
+    apiFetch('/api/v1/detection-rules/validation-schedules', Schedules),
     canChange
       ? apiFetch('/api/v1/detection-rules?lifecycle=deployed&limit=200', Rules)
       : Promise.resolve({ items: [] as z.infer<typeof DetectionRuleDetail>[], nextCursor: null }),
@@ -350,6 +353,111 @@ export default async function BlueTeamPage({
               queued: t('bt.queued'),
               noRules: t('bt.no_deployed_rules'),
               noSensors: t('bt.no_suricata_sensors'),
+              interval: t('bt.interval_days'),
+            }}
+          />
+        ) : null}
+      </section>
+
+      <section aria-labelledby="schedules" className="space-y-3">
+        <h2 id="schedules" className="text-lg font-medium">
+          {t('bt.schedules')}
+        </h2>
+        <p className="text-xs text-muted">{t('bt.schedules_hint')}</p>
+        {schedules.items.length === 0 ? (
+          <p
+            className="rounded-lg border border-border bg-surface p-4 text-sm text-muted"
+            data-testid="bt-no-schedules"
+          >
+            {t('bt.no_schedules')}
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-surface text-xs text-muted">
+                <tr>
+                  <th className="px-3 py-2 text-start">{t('bt.rule')}</th>
+                  <th className="px-3 py-2 text-start">{t('bt.sensor')}</th>
+                  <th className="px-3 py-2 text-start">{t('bt.sample')}</th>
+                  <th className="px-3 py-2 text-start">{t('bt.interval_days')}</th>
+                  <th className="px-3 py-2 text-start">{t('bt.last_verdict')}</th>
+                  <th className="px-3 py-2 text-start">{t('bt.last_queued')}</th>
+                  <th className="px-3 py-2 text-start">{t('bt.status')}</th>
+                  {canChange ? <th className="px-3 py-2 text-start">—</th> : null}
+                </tr>
+              </thead>
+              <tbody>
+                {schedules.items.map((s) => (
+                  <tr
+                    key={s.id}
+                    className={`border-t border-border align-top ${s.enabled ? '' : 'opacity-60'}`}
+                  >
+                    <td className="ltr px-3 py-2 text-xs">
+                      {s.ruleName}
+                      <span className="block text-[10px] text-muted">{s.ruleExternalId}</span>
+                    </td>
+                    <td className="ltr px-3 py-2 text-xs">{s.sensorName}</td>
+                    <td className="ltr px-3 py-2 text-xs text-muted">{s.sampleRef}</td>
+                    <td className="px-3 py-2 text-xs tabular-nums">{fmt.format(s.intervalDays)}</td>
+                    <td
+                      className={`px-3 py-2 text-xs font-medium ${s.lastVerdict ? VERDICT_TONE[s.lastVerdict] : 'text-muted'}`}
+                    >
+                      {s.lastVerdict ? t(VERDICT_LABEL[s.lastVerdict]) : '—'}
+                      {s.lastVerdictAt ? (
+                        <span className="block text-[10px] font-normal text-muted">
+                          {when.format(new Date(s.lastVerdictAt))}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-muted">
+                      {s.lastQueuedAt ? when.format(new Date(s.lastQueuedAt)) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      {s.enabled ? t('ops.enabled') : t('ops.disabled')}
+                      {s.lastError ? (
+                        <span className="ltr block text-[10px] text-sev-high">{s.lastError}</span>
+                      ) : null}
+                    </td>
+                    {canChange ? (
+                      <td className="px-3 py-2">
+                        <ScheduleToggle
+                          id={s.id}
+                          enabled={s.enabled}
+                          labels={{ enable: t('ops.enable'), disable: t('ops.disable') }}
+                        />
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {canChange ? (
+          <ValidateForm
+            mode="schedule"
+            rules={deployedRules.items.map((r) => ({
+              id: r.id,
+              label: `${r.externalId} ${r.name}`,
+            }))}
+            sensors={deployment.items
+              .filter((d) => d.engine === 'suricata')
+              .map((d) => ({
+                id: d.sensorId,
+                label: `${d.sensorName}${d.inSync ? '' : ' (bundle not acknowledged)'}`,
+              }))}
+            labels={{
+              heading: t('bt.schedule'),
+              hint: t('bt.schedules_hint'),
+              rule: t('bt.rule'),
+              sensor: t('bt.sensor'),
+              sample: t('bt.sample'),
+              note: t('bt.note'),
+              submit: t('bt.schedule'),
+              queued: t('bt.scheduled'),
+              noRules: t('bt.no_deployed_rules'),
+              noSensors: t('bt.no_suricata_sensors'),
+              interval: t('bt.interval_days'),
             }}
           />
         ) : null}
