@@ -17,7 +17,7 @@ import {
   seedAdmin,
   type Harness,
 } from './helpers';
-import { ValidationService } from '../src/rules/validation';
+import { SCHEDULE_LOCK_KEY, ValidationService } from '../src/rules/validation';
 import { AuditService } from '../src/audit/service';
 
 let h: Harness;
@@ -39,13 +39,17 @@ const asSensor = (cred: string) => ({
   'content-type': 'application/json',
 });
 
-async function enrol(name: string, kind: 'suricata' | 'zeek' = 'suricata') {
+async function enrol(
+  name: string,
+  kind: 'suricata' | 'zeek' = 'suricata',
+  site: string | null = null,
+) {
   const id = (
     await jsonOf(
       await post('/api/v1/sensors', admin.token, {
         name,
         kind,
-        site: null,
+        site,
         monitoredSegmentIds: [],
         engineVersion: null,
       }),
@@ -68,6 +72,23 @@ async function enrol(name: string, kind: 'suricata' | 'zeek' = 'suricata') {
   ).credential as string;
   await h.handle.db.execute(sql`update sensors set enabled = true where id = ${id}`);
   return { id, cred };
+}
+
+/** Import a custom C2 rule, then walk it through draft → validated → deployed. */
+async function importDeployRule() {
+  await post('/api/v1/detection-rules/import', blue, {
+    source: 'custom',
+    ruleSet: 'c2',
+    license: 'MIT',
+    content:
+      'alert tcp $HOME_NET any -> $EXTERNAL_NET 4444 (msg:"CUSTOM C2"; sid:9000001; rev:1; classtype:trojan-activity;)\n',
+  });
+  const rule = (await jsonOf(await get('/api/v1/detection-rules?q=9000001', blue))).items[0] as {
+    id: string;
+  };
+  await post(`/api/v1/detection-rules/${rule.id}/validate`, blue);
+  await post(`/api/v1/detection-rules/${rule.id}/deploy`, sec);
+  return rule.id;
 }
 
 beforeAll(async () => {
@@ -518,5 +539,217 @@ describe('detection validation', () => {
       (a) => a.action === 'detection_rules.validate',
     );
     expect(acts.some((a) => a.actorLabel === 'system:validation-scheduler')).toBe(true);
+  });
+
+  it('pages schedules with a keyset cursor, and an unknown cursor returns the first page instead of erroring', async () => {
+    const ruleId = await importDeployRule();
+    const ids: string[] = [];
+    for (const name of ['ids-page-1', 'ids-page-2', 'ids-page-3']) {
+      const s = await enrol(name);
+      const created = await post('/api/v1/detection-rules/validation-schedules', blue, {
+        ruleId,
+        sensorId: s.id,
+        sampleRef: 'c2-beacon.pcap',
+        intervalDays: 7,
+      });
+      expect(created.status).toBe(201);
+      ids.push(ValidationSchedule.parse(await jsonOf(created)).id);
+    }
+
+    const p1 = await jsonOf(
+      await get('/api/v1/detection-rules/validation-schedules?limit=2', blue),
+    );
+    expect(p1.items).toHaveLength(2);
+    expect(p1.nextCursor).toBe(p1.items[1].id);
+    const p2raw = await get(
+      `/api/v1/detection-rules/validation-schedules?limit=2&cursor=${p1.nextCursor}`,
+      blue,
+    );
+    expect(p2raw.status).toBe(200);
+    const p2 = await jsonOf(p2raw);
+    expect(p2.items).toHaveLength(1);
+    expect(p2.nextCursor).toBeNull();
+    // Newest-first, and the pages together are exactly what was created.
+    expect(p1.items[0].id).toBe(ids[2]);
+    expect([...p1.items, ...p2.items].map((x: { id: string }) => x.id)).toEqual(
+      expect.arrayContaining(ids),
+    );
+
+    // A stale or fabricated cursor is a link, not an existence oracle: back to the first page.
+    const stale = await jsonOf(
+      await get(
+        '/api/v1/detection-rules/validation-schedules?limit=2&cursor=00000000-0000-4000-8000-000000000000',
+        blue,
+      ),
+    );
+    expect(stale.items.map((x: { id: string }) => x.id)).toEqual(
+      p1.items.map((x: { id: string }) => x.id),
+    );
+    // The page cannot be widened past the documented cap.
+    const wide = await get('/api/v1/detection-rules/validation-schedules?limit=5000', blue);
+    expect(wide.status).toBe(400);
+  });
+
+  it('treats a sensor or schedule outside the caller site scope as missing rather than forbidden', async () => {
+    for (const [key, name] of [
+      ['dc1', 'DC1'],
+      ['dc2', 'DC2'],
+    ] as const)
+      expect((await post('/api/v1/sites', admin.token, { key, name })).status).toBe(201);
+    const ruleId = await importDeployRule();
+    const held = await enrol('ids-dc1', 'suricata', 'dc1');
+    const outside = await enrol('ids-dc2', 'suricata', 'dc2');
+
+    // The unrestricted engineer can schedule on the dc2 sensor; that row then exists.
+    const base = await post('/api/v1/detection-rules/validation-schedules', blue, {
+      ruleId,
+      sensorId: outside.id,
+      sampleRef: 'c2-beacon.pcap',
+      intervalDays: 7,
+    });
+    expect(base.status).toBe(201);
+    const hiddenId = ValidationSchedule.parse(await jsonOf(base)).id;
+
+    // A colleague holding only dc1 must not be able to see, create or touch it.
+    const u = await createUser(h, admin.token, {
+      email: 'scoped@test.local',
+      password: PW,
+      roles: ['blue_team_engineer'],
+    });
+    expect(
+      (
+        await h.app.request(`/api/v1/users/${u.body.id}/sites`, {
+          method: 'PUT',
+          headers: authed(admin.token),
+          body: JSON.stringify({ allSites: false, sites: ['dc1'] }),
+        })
+      ).status,
+    ).toBe(200);
+    const scoped = (await login(h, 'scoped@test.local', PW)).body.accessToken as string;
+
+    expect(
+      (
+        await post('/api/v1/detection-rules/validations', scoped, {
+          ruleId,
+          sensorId: outside.id,
+          sampleRef: 'c2-beacon.pcap',
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await post('/api/v1/detection-rules/validation-schedules', scoped, {
+          ruleId,
+          sensorId: outside.id,
+          sampleRef: 'c2-beacon.pcap',
+          intervalDays: 7,
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await h.app.request(`/api/v1/detection-rules/validation-schedules/${hiddenId}`, {
+          method: 'PATCH',
+          headers: authed(scoped),
+          body: JSON.stringify({ enabled: false }),
+        })
+      ).status,
+    ).toBe(404);
+    const list = (await jsonOf(
+      await get('/api/v1/detection-rules/validation-schedules', scoped),
+    )) as { items: ValidationSchedule[] };
+    expect(list.items).toEqual([]);
+
+    // The sensor they do hold is scheduleable, so the 404s above were scope, not a broken grant.
+    const own = await post('/api/v1/detection-rules/validation-schedules', scoped, {
+      ruleId,
+      sensorId: held.id,
+      sampleRef: 'c2-beacon.pcap',
+      intervalDays: 7,
+    });
+    expect(own.status).toBe(201);
+  });
+
+  it('stamps reported-at when a validation expires, so an unanswered sensor waits a full interval', async () => {
+    const s = await enrol('ids-edge-1');
+    const ruleId = await importDeployRule();
+    const created = await post('/api/v1/detection-rules/validation-schedules', blue, {
+      ruleId,
+      sensorId: s.id,
+      sampleRef: 'c2-beacon.pcap',
+      intervalDays: 7,
+    });
+    expect(created.status).toBe(201);
+    const svc = new ValidationService(h.handle.db, new AuditService(h.handle.db));
+
+    // The sensor never answers: the queued row expires and counts as a recent attempt.
+    expect(await svc.runSchedules(new Date(Date.now() + 86_400_000))).toEqual({
+      queued: 0,
+      skipped: 1,
+      errors: 0,
+    });
+    const list = (await jsonOf(
+      await get('/api/v1/detection-rules/validations?limit=50', blue),
+    )) as { items: DetectionValidation[] };
+    expect(list.items).toHaveLength(1);
+    expect(list.items[0]).toMatchObject({
+      status: 'expired',
+      verdict: null,
+      error: expect.stringContaining('did not report'),
+    });
+    expect(list.items[0]!.reportedAt).not.toBeNull();
+    // Without that stamp the schedule would re-queue on every tick; it only retries once the
+    // interval has elapsed since the expired attempt.
+    expect(await svc.runSchedules(new Date(Date.now() + 2 * 86_400_000))).toEqual({
+      queued: 0,
+      skipped: 1,
+      errors: 0,
+    });
+    expect(await svc.runSchedules(new Date(Date.now() + 8 * 86_400_000))).toEqual({
+      queued: 1,
+      skipped: 0,
+      errors: 0,
+    });
+  });
+
+  it('stands down while another instance holds the scheduler lock and picks up on the next tick', async () => {
+    const s = await enrol('ids-edge-1');
+    const ruleId = await importDeployRule();
+    const created = await post('/api/v1/detection-rules/validation-schedules', blue, {
+      ruleId,
+      sensorId: s.id,
+      sampleRef: 'c2-beacon.pcap',
+      intervalDays: 7,
+    });
+    expect(created.status).toBe(201);
+    const svc = new ValidationService(h.handle.db, new AuditService(h.handle.db));
+    // Prove the first run so the schedule is due, with nothing queued.
+    const bundle = await jsonOf(
+      await h.app.request('/api/v1/agents/rules-bundle', { headers: asSensor(s.cred) }),
+    );
+    const [first] = (
+      await jsonOf(await h.app.request('/api/v1/agents/validations', { headers: asSensor(s.cred) }))
+    ).items as Array<{ id: string }>;
+    await h.app.request(`/api/v1/agents/validations/${first!.id}/result`, {
+      method: 'POST',
+      headers: asSensor(s.cred),
+      body: JSON.stringify({
+        firedSids: [9000001],
+        rulesBundleSha256: bundle.bundleSha256,
+        engineVersion: '7.0.6',
+        error: null,
+        durationMs: 5,
+      }),
+    });
+    const due = new Date(Date.now() + 8 * 86_400_000);
+
+    // Hold the lock on another pooled connection — that is a second API instance mid-pass.
+    await h.handle.db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_try_advisory_lock(${SCHEDULE_LOCK_KEY}) as locked`);
+      expect(await svc.runSchedules(due)).toEqual({ queued: 0, skipped: 0, errors: 0 });
+      await tx.execute(sql`select pg_advisory_unlock(${SCHEDULE_LOCK_KEY})`);
+    });
+    // Released: the same tick now does the work the locked instance stood down from.
+    expect(await svc.runSchedules(due)).toEqual({ queued: 1, skipped: 0, errors: 0 });
   });
 });

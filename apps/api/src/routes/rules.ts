@@ -292,7 +292,10 @@ export function ruleRoutes(deps: Deps) {
         requestId: c.get('requestId'),
         ip: c.get('clientIp'),
       };
-      return c.json(await validations.create(c.req.valid('json'), actor), 201);
+      return c.json(
+        await validations.create(c.req.valid('json'), actor, sensorSiteCondition(siteScope(p))),
+        201,
+      );
     },
   );
 
@@ -303,12 +306,24 @@ export function ruleRoutes(deps: Deps) {
       tags: ['detection-rules'],
       middleware: [requirePermission('detection_rules.read')] as const,
       security: [{ bearerAuth: [] }],
+      request: {
+        query: z.object({
+          limit: z.coerce.number().int().min(1).max(200).default(50),
+          cursor: z.uuid().optional(),
+        }),
+      },
       responses: {
         200: {
           description:
-            'Standing validation schedules with their last verdict, inside the caller site scope',
+            'One page of standing validation schedules with their last verdict, inside the ' +
+            'caller site scope; pass `nextCursor` for the next page',
           content: {
-            'application/json': { schema: z.object({ items: z.array(ValidationSchedule) }) },
+            'application/json': {
+              schema: z.object({
+                items: z.array(ValidationSchedule),
+                nextCursor: z.string().nullable(),
+              }),
+            },
           },
         },
         ...common,
@@ -316,11 +331,10 @@ export function ruleRoutes(deps: Deps) {
     }),
     async (c) =>
       c.json(
-        {
-          items: await validations.listSchedules(
-            sensorSiteCondition(siteScope(c.get('principal'))),
-          ),
-        },
+        await validations.listSchedules(
+          sensorSiteCondition(siteScope(c.get('principal'))),
+          c.req.valid('query'),
+        ),
         200,
       ),
   );
@@ -340,10 +354,10 @@ export function ruleRoutes(deps: Deps) {
       },
       responses: {
         201: {
-          description: 'Schedule created (first validation queued now)',
+          description: 'Schedule created or reconfigured (first validation queued now)',
           content: { 'application/json': { schema: ValidationSchedule } },
         },
-        404: err('Rule or sensor not found'),
+        404: err('Rule or sensor not found, or outside the caller site scope'),
         409: err('Rule not deployed to that sensor, sensor not Suricata or disabled'),
         ...common,
       },
@@ -356,7 +370,14 @@ export function ruleRoutes(deps: Deps) {
         requestId: c.get('requestId'),
         ip: c.get('clientIp'),
       };
-      return c.json(await validations.createSchedule(c.req.valid('json'), actor), 201);
+      return c.json(
+        await validations.createSchedule(
+          c.req.valid('json'),
+          actor,
+          sensorSiteCondition(siteScope(p)),
+        ),
+        201,
+      );
     },
   );
 
@@ -379,7 +400,7 @@ export function ruleRoutes(deps: Deps) {
           description: 'Updated',
           content: { 'application/json': { schema: ValidationSchedule } },
         },
-        404: err('Not found'),
+        404: err('Not found, or outside the caller site scope'),
         ...common,
       },
     }),
@@ -392,7 +413,12 @@ export function ruleRoutes(deps: Deps) {
         ip: c.get('clientIp'),
       };
       return c.json(
-        await validations.updateSchedule(c.req.valid('param').id, c.req.valid('json'), actor),
+        await validations.updateSchedule(
+          c.req.valid('param').id,
+          c.req.valid('json'),
+          actor,
+          sensorSiteCondition(siteScope(p)),
+        ),
         200,
       );
     },

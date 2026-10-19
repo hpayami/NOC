@@ -22,9 +22,17 @@ export interface FeedParseResult {
   errors: string[];
 }
 
+/**
+ * NVD/KEV emit ISO-8601 timestamps that carry no offset but always mean UTC. `new Date` reads
+ * such a value as *local* time, so on any host not running UTC the parsed instant drifts by the
+ * host offset. A whole-string match (no trailing offset/Z at all) is therefore treated as UTC.
+ */
+const OFFSETLESS_STAMP = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?$/;
+
 const iso = (v: unknown): string | null => {
   if (typeof v !== 'string' || !v) return null;
-  const d = new Date(v);
+  const t = v.trim();
+  const d = new Date(OFFSETLESS_STAMP.test(t) ? `${t}Z` : v);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 };
 const num = (v: unknown): number | null =>

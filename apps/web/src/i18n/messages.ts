@@ -783,6 +783,7 @@ const fa = {
   'bt.schedules_hint':
     'هر قاعدهٔ مستقر هر N روز دوباره روی همان سنسور اثبات می‌شود تا «اثبات‌شده» پیش از انقضای ۳۰ روزه از دست نرود. پس از شکست یا نتیجهٔ نامشخص، تلاش بعدی تا پایان بازه عقب می‌افتد و شکست به‌عنوان شرط پلتفرم اعلام می‌شود.',
   'bt.no_schedules': 'زمان‌بندی‌ای تعریف نشده است.',
+  'bt.more_schedules': 'نمایش زمان‌بندی‌های بیشتر',
   'bt.schedule': 'زمان‌بندی اعتبارسنجی',
   'bt.scheduled': 'زمان‌بندی شد (اولین اجرا در صف)',
   'bt.interval_days': 'بازه (روز)',
@@ -1572,6 +1573,7 @@ const en: Record<MessageKey, string> = {
   'bt.schedules_hint':
     'Each deployed rule is re-proven on the same sensor every N days so "proven" never lapses past the 30-day freshness. After a failure or an inconclusive result the next attempt waits for the interval, and the failure is raised as a platform condition.',
   'bt.no_schedules': 'No schedule defined.',
+  'bt.more_schedules': 'Show more schedules',
   'bt.schedule': 'Schedule validation',
   'bt.scheduled': 'Scheduled (first run queued)',
   'bt.interval_days': 'Interval (days)',

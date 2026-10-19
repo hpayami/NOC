@@ -173,7 +173,12 @@ export class MlService {
     const windowStart = new Date(windowEnd.getTime() - ML_HISTORY_HOURS * 3_600_000);
     const rows = await this.db
       .select({
-        bucket: sql<string>`date_trunc('hour', ${securityEvents.eventTime})`,
+        // Truncate in UTC and label the bucket as an explicit UTC instant. `date_trunc` alone
+        // buckets in the *session* TimeZone and a bare `YYYY-MM-DD HH:MI:SS` label is re-read as
+        // *local* time by `new Date`, so on any host set to anything but UTC the buckets drift off
+        // the UTC hour the caller enumerates below and every lookup misses — the asset then looks
+        // like it has no events and scoring is refused.
+        bucket: sql<string>`to_char(date_trunc('hour', ${securityEvents.eventTime} at time zone 'UTC'), 'YYYY-MM-DD"T"HH24:MI:SS"Z"')`,
         events: count(),
         ports: sql<number>`count(distinct ${securityEvents.dstPort})`,
         peers: sql<number>`count(distinct case when ${securityEvents.srcAssetId} = ${assetId}::uuid then ${securityEvents.dstIp} else ${securityEvents.srcIp} end)`,

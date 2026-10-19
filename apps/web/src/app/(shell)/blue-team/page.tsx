@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import Link from 'next/link';
 import {
   DetectionCoverage,
   DetectionRuleDetail,
@@ -18,7 +19,10 @@ import { ScheduleToggle, ValidateForm } from './validate-form';
 export const dynamic = 'force-dynamic';
 const PERIODS = [7, 30, 90] as const;
 const Validations = z.object({ items: z.array(DetectionValidation) });
-const Schedules = z.object({ items: z.array(ValidationSchedule) });
+const Schedules = z.object({
+  items: z.array(ValidationSchedule),
+  nextCursor: z.string().nullable(),
+});
 const Rules = z.object({ items: z.array(DetectionRuleDetail), nextCursor: z.string().nullable() });
 const Deployment = z.object({ items: z.array(RuleDeploymentState) });
 const VERDICT_LABEL: Record<ValidationVerdict, MessageKey> = {
@@ -54,18 +58,22 @@ const STATUS_TONE: Record<CoverageStatus, string> = {
 export default async function BlueTeamPage({
   searchParams,
 }: {
-  searchParams: Promise<{ days?: string; view?: string }>;
+  searchParams: Promise<{ days?: string; view?: string; schedules?: string }>;
 }) {
   const { t, locale } = await getI18n();
   const sp = await searchParams;
   const days = (PERIODS as readonly number[]).includes(Number(sp.days)) ? Number(sp.days) : 30;
   const gapsOnly = sp.view === 'gaps';
+  const schedulesCursor = z.uuid().safeParse(sp.schedules).success ? sp.schedules : undefined;
   const me = await getSessionUser();
   const canChange = me?.permissions.includes('detection_rules.change') ?? false;
   const [c, validations, schedules, deployedRules, deployment] = await Promise.all([
     apiFetch(`/api/v1/detection-rules/coverage?days=${days}`, DetectionCoverage),
     apiFetch('/api/v1/detection-rules/validations?limit=50', Validations),
-    apiFetch('/api/v1/detection-rules/validation-schedules', Schedules),
+    apiFetch(
+      `/api/v1/detection-rules/validation-schedules?limit=50${schedulesCursor ? `&cursor=${schedulesCursor}` : ''}`,
+      Schedules,
+    ),
     canChange
       ? apiFetch('/api/v1/detection-rules?lifecycle=deployed&limit=200', Rules)
       : Promise.resolve({ items: [] as z.infer<typeof DetectionRuleDetail>[], nextCursor: null }),
@@ -433,6 +441,14 @@ export default async function BlueTeamPage({
             </table>
           </div>
         )}
+        {schedules.nextCursor ? (
+          <Link
+            href={qs({ schedules: schedules.nextCursor })}
+            className="inline-block text-xs text-accent hover:underline"
+          >
+            {t('bt.more_schedules')}
+          </Link>
+        ) : null}
         {canChange ? (
           <ValidateForm
             mode="schedule"
