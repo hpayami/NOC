@@ -1,10 +1,14 @@
 # NOC — Cyber Defense & Network Operations Platform
 
 Unified NIDS/NIPS, NOC, SOC, Blue/Red Team and authorized assessment platform.
-**Current state: Phase 0 (foundation).** The management plane, identity/RBAC, tamper-evident audit,
-shared contracts and database schema exist and are tested. Packet capture, detection engines,
-alerting, incidents, response and assessment are **not operational** and the platform says so at
-`/api/v1/platform/status`.
+**Current state: phases 0–7 delivered; phase 8 (operations) in flight.** The management plane,
+identity/RBAC (local + OIDC), tamper-evident audit, observation ingestion and asset inventory,
+availability monitoring, rule bundles and deployment, incident and response workflows,
+inline-prevention policy with a reference sensor agent, authorized assessments with a vulnerability
+catalogue (NVD/KEV), an ML baseline, and site scoping are built and tested. In flight: platform
+conditions with signed webhooks, threat-intel feeds, the period posture report, Blue Team ATT&CK
+coverage, offline sample-replay validation (including schedules), and e-mail channels. Whatever is
+not yet operational is reported as such at `/api/v1/platform/status` rather than being faked.
 
 Persian-first RTL UI with English localization; dark operational theme.
 
@@ -14,7 +18,7 @@ Persian-first RTL UI with English localization; dark operational theme.
 apps/api            Hono + Drizzle + Zod API (OpenAPI at /api/v1/openapi.json)
 apps/web            Next.js 15 (App Router, Server Components, BFF session)
 packages/shared     Zod schemas, enums, RBAC catalog, pure domain rules (+ tests)
-services/analysis   FastAPI analysis/ML service (Phase 0: health + honest status only)
+services/analysis   FastAPI analysis/ML service (health, honest status, baseline scoring)
 infra/              docker-compose.yml (postgres, redis, app profile), sensor deployment notes
 scripts/            start.sh · stop.sh · smoke.sh · env-report.sh
 docs/               environment report, architecture, security model, deployment profiles, Phase 1 plan
