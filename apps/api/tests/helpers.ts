@@ -4,6 +4,7 @@ import { createApp, type App } from '../src/app';
 import { AuditService } from '../src/audit/service';
 import { OidcService, oidcConfigFromEnv } from '../src/auth/oidc';
 import { OperationsService } from '../src/operations/service';
+import { sendMail } from '../src/operations/smtp';
 import { ThreatIntelService } from '../src/threat-intel/service';
 import { AlertBus } from '../src/events/bus';
 import { loadEnv, type Env } from '../src/config/env';
@@ -70,6 +71,8 @@ export async function createHarness(
     remindHours: 6,
     logger: pino({ level: 'silent' }),
     timeoutMs: 2000,
+    // Tests talk to an in-process SMTP stub over a plain socket; production never sets this.
+    mailImpl: (o) => sendMail({ ...o, insecurePlain: true }),
   });
   const bus = new AlertBus();
   const threatIntel = new ThreatIntelService(handle.db, audit, bus);

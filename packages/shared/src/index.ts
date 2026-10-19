@@ -43,6 +43,7 @@ export * from './rules/posture-report';
 export * from './rules/coverage';
 export * from './rules/pentest';
 export * from './rules/validation';
+export * from './rules/notifications';
 export * from './entities/ml';
 export * from './entities/sso';
 export * from './entities/sites';

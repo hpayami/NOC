@@ -16,13 +16,37 @@ export async function createChannel(
   _prev: CreateChannelState,
   formData: FormData,
 ): Promise<CreateChannelState> {
-  const parsed = CreateNotificationChannelRequest.safeParse({
-    name: formData.get('name'),
-    url: formData.get('url'),
-    secret: formData.get('secret'),
-    minSeverity: formData.get('minSeverity') ?? undefined,
-    enabled: true,
-  });
+  const kind = formData.get('kind') === 'email' ? 'email' : 'webhook';
+  const str = (k: string) => String(formData.get(k) ?? '').trim();
+  const parsed = CreateNotificationChannelRequest.safeParse(
+    kind === 'email'
+      ? {
+          kind,
+          name: str('name'),
+          minSeverity: formData.get('minSeverity') ?? undefined,
+          enabled: true,
+          email: {
+            host: str('host'),
+            port: Number(str('port') || 587),
+            starttls: formData.get('starttls') === 'on',
+            username: str('username') || null,
+            from: str('from'),
+            recipients: str('recipients')
+              .split(/[,\s;]+/)
+              .map((r) => r.trim())
+              .filter(Boolean),
+          },
+          password: str('password') || null,
+        }
+      : {
+          kind,
+          name: str('name'),
+          url: str('url'),
+          secret: str('secret'),
+          minSeverity: formData.get('minSeverity') ?? undefined,
+          enabled: true,
+        },
+  );
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'invalid' };
   try {
     const ch = await apiFetch('/api/v1/operations/channels', NotificationChannel, {

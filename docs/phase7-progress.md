@@ -259,3 +259,47 @@ machine); the notifier runs on every instance unless disabled on all but one (st
 per channel, so two instances would at worst send one duplicate per condition change); there is
 no per-site routing of conditions; the receiver must verify the signature itself (a sample is in
 the README).
+
+## Slice 6 — E-mail notification channels over SMTP (2026-10-19)
+
+**Delivered**
+
+- **Contract**: `NotificationChannel.kind` is `webhook | email`; `CreateNotificationChannelRequest`
+  is a union — the webhook variant is unchanged (and `kind` defaults to it, so existing clients
+  keep working), the e-mail variant carries `EmailChannelConfig` (host, port default 587,
+  `starttls` default true, optional username, from, 1–32 recipients) and a write-only SMTP
+  password. Channels return their SMTP settings without the password.
+- **Rendering** (`rules/notifications.ts`, pure): one deterministic plain-text e-mail per
+  condition event — subject `[NOC] <SEVERITY|RESOLVED|TEST>: <title>`, body with condition id,
+  severity, count, detail, workspace link, time and platform version, and the same honesty
+  line as every other output.
+- **SMTP client** (`apps/api/src/operations/smtp.ts`, no dependency added): EHLO, STARTTLS when
+  the server offers it (refused when required but absent), implicit TLS on 465, AUTH PLAIN or
+  LOGIN only on a TLS session, MAIL/RCPT/DATA with dot-stuffing, base64 body and encoded
+  headers, QUIT; timeouts and the last server reply are captured. Certificate validation is
+  never relaxed. A test-only `insecurePlain` flag exists for the in-process stub and is set
+  nowhere in production code.
+- **Service**: `deliver` branches on kind; the state machine (raise once, remind after the
+  quiet period, resolve once, retry failures) is unchanged. Failed SMTP deliveries record the
+  server reply (`550 5.1.1 User unknown`) on the delivery and the channel. Capability
+  `ops.notifications` counts both kinds. Schema (`0022_phase7_email_channels`): `url` and
+  `secret` nullable, `config` jsonb for kind-specific settings.
+- Web: channel form with a kind switch (webhook fields or SMTP fields), channel table with
+  kind and target (host:port → recipients), i18n fa/en.
+
+**Verified**
+
+Shared (2): rendering (subject per event, body facts, honesty line); contract (webhook without
+`kind`, e-mail defaults, bad host / from / ftp URL refused). API (1 new, against an in-process
+SMTP stub): invalid recipients 400; created channel shows settings but never the password
+(list included); a test delivery authenticates with AUTH PLAIN, addresses both recipients,
+carries the rendered subject and a base64 body with the condition; a critical condition raises
+one e-mail and stays quiet on repeat; a recipient rejected with 550 is a failed delivery with
+the reply on the channel, retried and sent once the server accepts; capability available.
+Totals: shared 137, API 114 (30 files), web 5, pytest 8 + agent 10; e2e 5/5.
+
+**Known limitations**
+
+STARTTLS and implicit-TLS paths are exercised against real servers only (the stub speaks plain
+SMTP); no HTML body, attachments or digest batching; one message per event per channel;
+SMTP egress must be allowed from the API host (see deployment profiles).

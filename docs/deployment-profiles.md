@@ -59,4 +59,7 @@ Never report "zero packet loss" or "complete visibility" without counters from t
   condition, so running it on several instances is safe but can send one duplicate per change
   when two ticks race; run it on one instance. Webhook receivers must verify
   `x-noc-signature` (HMAC-SHA256 over the raw body with the channel secret) before trusting a
-  payload; the platform never follows redirects and times out after 5 s.
+  payload; the platform never follows redirects and times out after 5 s. E-mail channels need
+  SMTP egress (587 with STARTTLS or 465) from the API host; the client refuses to send
+  credentials without TLS and never relaxes certificate validation, so the relay's certificate
+  must be trusted by the API host.

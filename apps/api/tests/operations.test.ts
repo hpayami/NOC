@@ -1,4 +1,5 @@
 import http from 'node:http';
+import net from 'node:net';
 import { createHmac } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
@@ -96,13 +97,86 @@ async function enrol(name: string) {
   return { id, cred };
 }
 
+interface MailSeen {
+  auth: string | null;
+  from: string | null;
+  to: string[];
+  data: string;
+}
+/** Minimal SMTP stub: EHLO/AUTH PLAIN/MAIL/RCPT/DATA/QUIT; `rejectRcpt` answers 550 to recipients. */
+function smtpStub(): Promise<{
+  server: net.Server;
+  port: number;
+  mails: MailSeen[];
+  state: { rejectRcpt: boolean };
+}> {
+  const mails: MailSeen[] = [];
+  const state = { rejectRcpt: false };
+  const server = net.createServer((sock) => {
+    let buf = '';
+    let inData = false;
+    let cur: MailSeen = { auth: null, from: null, to: [], data: '' };
+    const send = (l: string) => sock.write(l + '\r\n');
+    send('220 stub ESMTP');
+    sock.on('data', (chunk) => {
+      buf += chunk.toString('utf8');
+      for (;;) {
+        const i = buf.indexOf('\r\n');
+        if (i < 0) break;
+        const line = buf.slice(0, i);
+        buf = buf.slice(i + 2);
+        if (inData) {
+          if (line === '.') {
+            inData = false;
+            mails.push(cur);
+            cur = { auth: null, from: null, to: [], data: '' };
+            send('250 2.0.0 Ok: queued as 42');
+          } else cur.data += line + '\n';
+          continue;
+        }
+        const up = line.toUpperCase();
+        if (up.startsWith('EHLO')) {
+          send('250-stub');
+          send('250 AUTH PLAIN LOGIN');
+        } else if (up.startsWith('AUTH PLAIN')) {
+          cur.auth = Buffer.from(line.slice(11), 'base64').toString('utf8');
+          send('235 2.7.0 Authentication successful');
+        } else if (up.startsWith('MAIL FROM:')) {
+          cur.from = line.slice(10).replace(/[<>]/g, '');
+          send('250 2.1.0 Ok');
+        } else if (up.startsWith('RCPT TO:')) {
+          if (state.rejectRcpt) send('550 5.1.1 User unknown');
+          else {
+            cur.to.push(line.slice(8).replace(/[<>]/g, ''));
+            send('250 2.1.5 Ok');
+          }
+        } else if (up === 'DATA') {
+          inData = true;
+          send('354 End data with <CR><LF>.<CR><LF>');
+        } else if (up === 'QUIT') {
+          send('221 2.0.0 Bye');
+          sock.end();
+        } else send('500 5.5.1 Unknown command');
+      }
+    });
+  });
+  return new Promise((resolve) =>
+    server.listen(0, '127.0.0.1', () =>
+      resolve({ server, port: (server.address() as { port: number }).port, mails, state }),
+    ),
+  );
+}
+
 let hook: Awaited<ReturnType<typeof receiver>>;
+let smtp: Awaited<ReturnType<typeof smtpStub>>;
 beforeAll(async () => {
   h = await createHarness();
   hook = await receiver();
+  smtp = await smtpStub();
 });
 afterAll(async () => {
   hook.server.close();
+  smtp.server.close();
   await h.close();
 });
 beforeEach(async () => {
@@ -121,6 +195,8 @@ beforeEach(async () => {
   blue = (await login(h, 'blue@test.local', PW)).body.accessToken as string;
   hook.got.length = 0;
   hook.state.fail = false;
+  smtp.mails.length = 0;
+  smtp.state.rejectRcpt = false;
 });
 
 const SECRET = 'webhook-shared-secret-0123456789';
@@ -426,5 +502,111 @@ describe('platform conditions and notifications', () => {
         (a) => a.action === 'notifications.channel_test',
       ),
     ).toHaveLength(2);
+  });
+
+  it('delivers e-mail channels over SMTP with the same state machine, never returning the password', async () => {
+    const bad = await post('/api/v1/operations/channels', admin.token, {
+      kind: 'email',
+      name: 'oncall',
+      email: { host: 'mail.example', from: 'noc@example.test', recipients: [] },
+    });
+    expect(bad.status).toBe(400);
+    const created = await post('/api/v1/operations/channels', admin.token, {
+      kind: 'email',
+      name: 'oncall',
+      minSeverity: 'critical',
+      email: {
+        host: '127.0.0.1',
+        port: smtp.port,
+        starttls: false,
+        username: 'noc-bot',
+        from: 'noc@example.test',
+        recipients: ['soc@example.test', 'ops@example.test'],
+      },
+      password: 'smtp-password-0123456789',
+    });
+    expect(created.status).toBe(201);
+    const ch = await jsonOf(created);
+    expect(ch).toMatchObject({
+      kind: 'email',
+      url: null,
+      email: {
+        host: '127.0.0.1',
+        port: smtp.port,
+        starttls: false,
+        username: 'noc-bot',
+        from: 'noc@example.test',
+        recipients: ['soc@example.test', 'ops@example.test'],
+      },
+    });
+    expect(JSON.stringify(ch)).not.toContain('smtp-password');
+    expect(
+      JSON.stringify(await jsonOf(await get('/api/v1/operations/channels', admin.token))),
+    ).not.toContain('smtp-password');
+
+    // Test delivery: one authenticated message to both recipients, subject and body from the condition.
+    const t = await jsonOf(await post(`/api/v1/operations/channels/${ch.id}/test`, admin.token));
+    expect(t).toMatchObject({ event: 'test', status: 'sent', httpStatus: null, error: null });
+    expect(smtp.mails).toHaveLength(1);
+    const m = smtp.mails[0]!;
+    expect(m.auth).toBe('\0noc-bot\0smtp-password-0123456789');
+    expect(m.from).toBe('noc@example.test');
+    expect(m.to).toEqual(['soc@example.test', 'ops@example.test']);
+    expect(m.data).toContain('Subject: [NOC] TEST: Test notification');
+    expect(m.data).toContain('Content-Transfer-Encoding: base64');
+    const body = Buffer.from(m.data.split('\n\n')[1]!.replace(/\s/g, ''), 'base64').toString(
+      'utf8',
+    );
+    expect(body).toContain('Condition: test');
+    expect(body).toContain('nothing is wrong');
+
+    // A critical condition raises once by e-mail; a rejected recipient is a failed delivery that is retried.
+    await enrol('ids-edge-1');
+    const t0 = new Date();
+    expect(await h.operations.notify(t0)).toEqual({ raised: 1, resolved: 0, failed: 0 });
+    expect(smtp.mails).toHaveLength(2);
+    expect(smtp.mails[1]!.data).toContain('Subject: [NOC] CRITICAL: Sensors silent');
+    expect(await h.operations.notify(new Date(t0.getTime() + 60_000))).toEqual({
+      raised: 0,
+      resolved: 0,
+      failed: 0,
+    });
+    smtp.state.rejectRcpt = true;
+    await h.handle.db.execute(
+      sql`update sensors set last_heartbeat_at = now() - interval '20 minutes'`,
+    );
+    const ch2 = await jsonOf(
+      await post('/api/v1/operations/channels', admin.token, {
+        kind: 'email',
+        name: 'second',
+        minSeverity: 'critical',
+        email: {
+          host: '127.0.0.1',
+          port: smtp.port,
+          starttls: false,
+          from: 'noc@example.test',
+          recipients: ['nobody@example.test'],
+        },
+      }),
+    );
+    expect(await h.operations.notify(new Date(t0.getTime() + 120_000))).toEqual({
+      raised: 0,
+      resolved: 0,
+      failed: 1,
+    });
+    const chs = (await jsonOf(await get('/api/v1/operations/channels', admin.token)))
+      .items as Array<{ id: string; lastStatus: string; lastError: string | null }>;
+    expect(chs.find((c) => c.id === ch2.id)).toMatchObject({ lastStatus: 'failed' });
+    expect(chs.find((c) => c.id === ch2.id)!.lastError).toContain('550 5.1.1 User unknown');
+    smtp.state.rejectRcpt = false;
+    expect(await h.operations.notify(new Date(t0.getTime() + 180_000))).toEqual({
+      raised: 1,
+      resolved: 0,
+      failed: 0,
+    });
+    const status = await jsonOf(await get('/api/v1/platform/status', admin.token));
+    expect(
+      status.capabilities.find((c: { id: string }) => c.id === 'ops.notifications').state,
+    ).toBe('available');
   });
 });

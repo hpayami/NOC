@@ -4,6 +4,8 @@ import { and, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Logger } from 'pino';
 import {
   CONDITION_SEVERITY_RANK,
+  EmailChannelConfig,
+  renderNotificationEmail,
   conditionFingerprint,
   evaluateConditions,
   type ConditionSeverity,
@@ -27,6 +29,7 @@ import {
   sensors,
 } from '../db/schema';
 import type { MlService } from '../ml/service';
+import { sendMail, type MailOptions, type MailResult } from './smtp';
 import { RuleService } from '../rules/service';
 import { VulnerabilityService } from '../vulnerabilities/service';
 
@@ -39,11 +42,18 @@ export interface Actor {
 
 type ChannelRow = typeof notificationChannels.$inferSelect;
 
+const emailConfig = (c: ChannelRow): EmailChannelConfig | null => {
+  if (c.kind !== 'email' || !c.config) return null;
+  const parsed = EmailChannelConfig.safeParse(c.config);
+  return parsed.success ? parsed.data : null;
+};
+
 const toChannel = (c: ChannelRow): NotificationChannel => ({
   id: c.id,
   name: c.name,
-  kind: 'webhook',
-  url: c.url,
+  kind: c.kind === 'email' ? 'email' : 'webhook',
+  url: c.kind === 'email' ? null : c.url,
+  email: emailConfig(c),
   enabled: c.enabled,
   minSeverity: c.minSeverity as ConditionSeverity,
   createdAt: c.createdAt.toISOString(),
@@ -84,6 +94,8 @@ export class OperationsService {
       remindHours: number;
       logger: Logger;
       fetchImpl?: typeof fetch;
+      /** Test hook for the SMTP path (plain socket); production never sets it. */
+      mailImpl?: (o: MailOptions) => Promise<MailResult>;
       timeoutMs?: number;
     },
   ) {}
@@ -175,8 +187,10 @@ export class OperationsService {
       .insert(notificationChannels)
       .values({
         name: input.name,
-        url: input.url,
-        secret: input.secret,
+        kind: input.kind,
+        url: input.kind === 'webhook' ? input.url : null,
+        secret: input.kind === 'webhook' ? input.secret : input.password,
+        config: input.kind === 'email' ? input.email : null,
         enabled: input.enabled,
         minSeverity: input.minSeverity,
         createdBy: actor.userId,
@@ -191,7 +205,15 @@ export class OperationsService {
       targetId: row!.id,
       requestId: actor.requestId,
       sourceIp: actor.ip,
-      metadata: { name: input.name, url: input.url, minSeverity: input.minSeverity },
+      metadata: {
+        name: input.name,
+        kind: input.kind,
+        target:
+          input.kind === 'webhook'
+            ? input.url
+            : `${input.email.host}:${input.email.port} → ${input.email.recipients.length} recipient(s)`,
+        minSeverity: input.minSeverity,
+      },
     });
     return toChannel(row!);
   }
@@ -258,28 +280,53 @@ export class OperationsService {
     let ok = false;
     let httpStatus: number | null = null;
     let error: string | null = null;
-    try {
-      const res = await (this.opts.fetchImpl ?? fetch)(channel.url, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'user-agent': 'noc-api/notifications',
-          'x-noc-event': event,
-          'x-noc-timestamp': now.toISOString(),
-          'x-noc-signature': signWebhook(channel.secret, body),
-        },
-        body,
-        signal: ctrl.signal,
-        redirect: 'manual',
-      });
-      httpStatus = res.status;
-      ok = res.status >= 200 && res.status < 300;
-      if (!ok) error = `HTTP ${res.status}`;
-    } catch (err) {
-      error = (err instanceof Error ? err.message : String(err)).slice(0, 512);
-    } finally {
+    const email = emailConfig(channel);
+    if (channel.kind === 'email') {
       clearTimeout(timer);
-    }
+      if (!email) error = 'e-mail channel has no valid SMTP configuration';
+      else {
+        const mail = renderNotificationEmail(payload);
+        const r = await (this.opts.mailImpl ?? sendMail)({
+          host: email.host,
+          port: email.port,
+          starttls: email.starttls,
+          username: email.username,
+          password: channel.secret,
+          from: email.from,
+          to: email.recipients,
+          subject: mail.subject,
+          text: mail.text,
+          timeoutMs: this.opts.timeoutMs ?? 10_000,
+        });
+        ok = r.ok;
+        error = r.ok
+          ? null
+          : ((r.response ? `${r.error} (${r.response})` : r.error)?.slice(0, 512) ??
+            'SMTP failure');
+      }
+    } else
+      try {
+        const res = await (this.opts.fetchImpl ?? fetch)(channel.url ?? '', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'user-agent': 'noc-api/notifications',
+            'x-noc-event': event,
+            'x-noc-timestamp': now.toISOString(),
+            'x-noc-signature': signWebhook(channel.secret ?? '', body),
+          },
+          body,
+          signal: ctrl.signal,
+          redirect: 'manual',
+        });
+        httpStatus = res.status;
+        ok = res.status >= 200 && res.status < 300;
+        if (!ok) error = `HTTP ${res.status}`;
+      } catch (err) {
+        error = (err instanceof Error ? err.message : String(err)).slice(0, 512);
+      } finally {
+        clearTimeout(timer);
+      }
     await this.db.insert(notificationDeliveries).values({
       channelId: channel.id,
       conditionId: condition.id,
@@ -297,7 +344,7 @@ export class OperationsService {
     if (!ok)
       this.opts.logger.warn(
         { channel: channel.name, event, condition: condition.id, httpStatus, error },
-        'webhook delivery failed',
+        'notification delivery failed',
       );
     return { ok, httpStatus, error };
   }

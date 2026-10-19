@@ -2,6 +2,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -16,9 +17,12 @@ export const notificationChannels = pgTable('notification_channels', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   kind: text('kind').notNull().default('webhook'),
-  url: text('url').notNull(),
-  /** HMAC key the platform signs with; write-only through the API, never logged or returned. */
-  secret: text('secret').notNull(),
+  /** Webhook endpoint; null for e-mail channels. */
+  url: text('url'),
+  /** HMAC key (webhook) or SMTP password (e-mail); write-only through the API, never logged or returned. */
+  secret: text('secret'),
+  /** Kind-specific settings without secrets (SMTP host, port, from, recipients). */
+  config: jsonb('config').$type<Record<string, unknown> | null>(),
   enabled: boolean('enabled').notNull().default(true),
   minSeverity: text('min_severity').notNull().default('warning'),
   createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),

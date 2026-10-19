@@ -244,6 +244,9 @@ Recorded Phase 0 results: `docs/phase0-verification.md`.
   dropped by the watchdog, analysis service unreachable, approvals waiting, uncatalogued CVEs,
   an unmonitored majority of assets) and reports **every check** as ok / failing / unavailable.
   Shown on the command centre and `/operations`.
+- E-mail channels (`kind: email`): SMTP with STARTTLS (or implicit TLS on 465), AUTH PLAIN/LOGIN
+  only over TLS, certificate validation never relaxed, one plain-text message per condition
+  event; the password is write-only. No dependency added.
 - Webhook channels (`notifications.manage`): each delivery is signed with HMAC-SHA256 over the
   raw body (`x-noc-signature: sha256=<hex>`, plus `x-noc-event`, `x-noc-timestamp`); a channel is
   told once when a condition appears or changes, reminded after `NOTIFICATIONS_REMIND_HOURS`,

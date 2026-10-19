@@ -766,6 +766,19 @@ const fa = {
   'bt.proven': 'اثبات‌شده',
   'bt.rules_proven': 'قواعد اثبات‌شده',
   'bt.requested': 'درخواست',
+  'ops.kind': 'نوع کانال',
+  'ops.kind_webhook': 'Webhook (HMAC)',
+  'ops.kind_email': 'ایمیل (SMTP)',
+  'ops.target': 'مقصد',
+  'ops.host': 'میزبان SMTP',
+  'ops.port': 'پورت',
+  'ops.starttls': 'ارتقا با STARTTLS (در صورت پیشنهاد سرور؛ در غیر این صورت ارسال رد می‌شود)',
+  'ops.username': 'نام کاربری SMTP',
+  'ops.password': 'گذرواژهٔ SMTP (فقط نوشتنی)',
+  'ops.from': 'فرستنده',
+  'ops.recipients': 'گیرندگان (با کاما جدا کنید)',
+  'ops.email_hint':
+    'هر رویداد شرط یک ایمیل متنی ساده می‌فرستد. گواهی TLS هرگز نادیده گرفته نمی‌شود و اعتبارنامه روی اتصال بدون TLS ارسال نمی‌شود. گذرواژه فقط هنگام ساخت پذیرفته می‌شود و هرگز بازگردانده نمی‌شود.',
   'footer.notice': 'این سامانه فقط دارایی‌های دارای مجوز صریح را پایش و ارزیابی می‌کند.',
 } as const;
 
@@ -1532,6 +1545,20 @@ const en: Record<MessageKey, string> = {
   'bt.proven': 'proven',
   'bt.rules_proven': 'Rules proven',
   'bt.requested': 'Requested',
+  'ops.kind': 'Channel kind',
+  'ops.kind_webhook': 'Webhook (HMAC)',
+  'ops.kind_email': 'E-mail (SMTP)',
+  'ops.target': 'Target',
+  'ops.host': 'SMTP host',
+  'ops.port': 'Port',
+  'ops.starttls':
+    'Upgrade with STARTTLS (when the server offers it; otherwise delivery is refused)',
+  'ops.username': 'SMTP username',
+  'ops.password': 'SMTP password (write-only)',
+  'ops.from': 'From',
+  'ops.recipients': 'Recipients (comma-separated)',
+  'ops.email_hint':
+    'Each condition event sends one plain-text e-mail. TLS certificates are never ignored and credentials are never sent over a connection without TLS. The password is accepted at creation only and never returned.',
   'footer.notice': 'This platform monitors and assesses explicitly authorized assets only.',
 };
 

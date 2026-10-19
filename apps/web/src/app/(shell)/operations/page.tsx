@@ -88,7 +88,8 @@ export default async function OperationsPage() {
                   <thead className="bg-surface text-xs text-muted">
                     <tr>
                       <th className="px-3 py-2 text-start">{t('ops.name')}</th>
-                      <th className="px-3 py-2 text-start">{t('ops.url')}</th>
+                      <th className="px-3 py-2 text-start">{t('ops.kind')}</th>
+                      <th className="px-3 py-2 text-start">{t('ops.target')}</th>
                       <th className="px-3 py-2 text-start">{t('ops.min_severity')}</th>
                       <th className="px-3 py-2 text-start">{t('admin.status')}</th>
                       <th className="px-3 py-2 text-start">{t('ops.last_attempt')}</th>
@@ -99,8 +100,11 @@ export default async function OperationsPage() {
                     {channels.items.map((c) => (
                       <tr key={c.id} className="border-t border-border align-top">
                         <td className="px-3 py-2">{c.name}</td>
+                        <td className="ltr px-3 py-2 text-xs text-muted">{c.kind}</td>
                         <td className="ltr max-w-xs truncate px-3 py-2 text-xs text-muted">
-                          {c.url}
+                          {c.kind === 'email' && c.email
+                            ? `${c.email.host}:${c.email.port} → ${c.email.recipients.join(', ')}`
+                            : c.url}
                         </td>
                         <td className="px-3 py-2">{severity[c.minSeverity]}</td>
                         <td className="px-3 py-2">
@@ -155,6 +159,17 @@ export default async function OperationsPage() {
                 hint: t('ops.create_hint'),
                 name: t('ops.name'),
                 url: t('ops.url'),
+                kind: t('ops.kind'),
+                kindWebhook: t('ops.kind_webhook'),
+                kindEmail: t('ops.kind_email'),
+                host: t('ops.host'),
+                port: t('ops.port'),
+                starttls: t('ops.starttls'),
+                username: t('ops.username'),
+                password: t('ops.password'),
+                from: t('ops.from'),
+                recipients: t('ops.recipients'),
+                emailHint: t('ops.email_hint'),
                 secret: t('ops.secret'),
                 minSeverity: t('ops.min_severity'),
                 submit: t('ops.create_submit'),

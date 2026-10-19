@@ -219,7 +219,7 @@ export function resolveCapabilities(input: {
       return {
         ...cap,
         state: n.failed > 0 ? 'degraded' : 'available',
-        reason: `${n.enabled} enabled webhook channel(s); ${n.failed} with a failed last delivery. Signed (HMAC-SHA256), de-duplicated per condition, reminders after the quiet period`,
+        reason: `${n.enabled} enabled channel(s) (webhook or e-mail); ${n.failed} with a failed last delivery. Signed (HMAC-SHA256), de-duplicated per condition, reminders after the quiet period`,
       };
     }
     if (cap.id === 'threat_intel.indicators') {
