@@ -14,7 +14,7 @@
   "dependencies": {
     "@fontsource-variable/vazirmatn": "^5.2.0",
     "@noc/shared": "workspace:*",
-    "next": "^15.5.0",
+    "next": "^15.5.29",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "zod": "^4.1.0"
